@@ -559,8 +559,10 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
     // Check if this is an icon-based shape
     if (ICON_SHAPE_TYPES.includes(shapeType)) {
-      // Create a rounded rectangle as background
+      // Create a rounded rectangle as background at group origin (0,0)
       const bgRect = new Rect({
+        left: 0,
+        top: 0,
         width: shapeWidth,
         height: shapeHeight,
         rx: 12,
@@ -569,22 +571,75 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       });
 
       // Load the icon image
-      const iconDataUrl = createIconDataUrl(shapeType, '#ffffff', 32);
+      const iconDataUrl = createIconDataUrl(shapeType, '#ffffff', 40);
+      
+      if (!iconDataUrl) {
+        console.error(`Failed to create icon data URL for shape type: ${shapeType}`);
+        // Fallback to simple rect if icon creation fails
+        const rect = new Rect({ left, top, width: shapeWidth, height: shapeHeight, rx: 12, ry: 12, ...baseProps });
+        (rect as any).shapeId = shapeId;
+        (rect as any).shapeType = shapeType;
+        return rect;
+      }
       
       try {
-        const img = await FabricImage.fromURL(iconDataUrl);
+        // Load the image - FabricImage.fromURL returns a promise in newer versions
+        const img = await FabricImage.fromURL(iconDataUrl, {
+          crossOrigin: 'anonymous',
+        });
+        
+        // Scale the image first
         img.scaleToWidth(32);
         img.scaleToHeight(32);
+        
+        // Wait for image to be fully loaded and scaled
+        await new Promise(resolve => setTimeout(resolve, 10));
+        
+        // Get the actual scaled dimensions
+        const scaledWidth = (img.width || 32) * (img.scaleX || 1);
+        const scaledHeight = (img.height || 32) * (img.scaleY || 1);
+        
+        // Position image at center of the shape
+        // In a FabricGroup, objects use coordinates relative to the group's top-left (0,0)
+        // The background rect is at (0,0) with width 120, height 80
+        // We want the icon centered horizontally and slightly above vertical center
+        const iconCenterX = shapeWidth / 2; // 60 (center of 120px width)
+        const iconCenterY = shapeHeight / 2 - 8; // 32 (slightly above center of 80px height)
+        
+        // Use left/top origin and calculate position manually to ensure accuracy
+        // Position = center - half of scaled dimension
+        const iconLeft = iconCenterX - (scaledWidth / 2);
+        const iconTop = iconCenterY - (scaledHeight / 2);
+        
         img.set({
-          originX: 'center',
-          originY: 'center',
-          left: shapeWidth / 2,
-          top: shapeHeight / 2 - 8,
+          left: iconLeft,
+          top: iconTop,
+          originX: 'left',
+          originY: 'top',
           selectable: false,
           evented: false,
+          excludeFromExport: false,
         });
-        // Ensure the image is visible
+        
+        // Ensure image is rendered and coordinates are updated
         img.setCoords();
+        
+        // Debug log
+        console.log('Icon positioned with left/top origin:', {
+          iconCenterX,
+          iconCenterY,
+          scaledWidth,
+          scaledHeight,
+          iconLeft,
+          iconTop,
+          imgLeft: img.left,
+          imgTop: img.top,
+        });
+        
+        // Verify image is loaded and has dimensions
+        if (!img.getElement || !img.getElement()) {
+          throw new Error('Image element not available');
+        }
 
         // Create label text
         const labelText = new Textbox(label, {
@@ -598,13 +653,50 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           width: shapeWidth - 10,
           left: shapeWidth / 2,
           top: shapeHeight - 22,
+          selectable: false,
+          evented: false,
         });
 
-        // Group them together
+        // Group them together - order matters: background first, then image, then text
+        // All objects in the group use coordinates relative to the group's origin (0,0)
         const group = new FabricGroup([bgRect, img, labelText], {
           left,
           top,
         });
+
+        // After grouping, verify and fix image position if needed
+        group.setCoords();
+        group.calcCoords();
+        
+        // Get the image from the group and verify its position
+        const groupObjects = group.getObjects();
+        const imageInGroup = groupObjects.find(obj => obj.type === 'image') as FabricImage;
+        if (imageInGroup) {
+          // If the image position seems wrong, fix it
+          const expectedCenterX = shapeWidth / 2;
+          const expectedCenterY = shapeHeight / 2 - 8;
+          
+          // Check if position is way off (more than 10px difference)
+          if (Math.abs(imageInGroup.left - expectedCenterX) > 10 || 
+              Math.abs(imageInGroup.top - expectedCenterY) > 10) {
+            console.warn('Image position incorrect, fixing...', {
+              current: { left: imageInGroup.left, top: imageInGroup.top },
+              expected: { left: expectedCenterX, top: expectedCenterY },
+            });
+            
+            // Fix the position
+            imageInGroup.set({
+              left: expectedCenterX,
+              top: expectedCenterY,
+              originX: 'center',
+              originY: 'center',
+            });
+            
+            // Update the group
+            group.setCoords();
+            group.calcCoords();
+          }
+        }
 
         (group as any).shapeId = shapeId;
         (group as any).shapeType = shapeType;
@@ -612,7 +704,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         (group as any).isIconShape = true;
 
         return group;
-      } catch {
+      } catch (error) {
+        console.error('Failed to create icon shape:', error);
         // Fallback to simple rect if image fails
         const rect = new Rect({ left, top, width: shapeWidth, height: shapeHeight, rx: 12, ry: 12, ...baseProps });
         (rect as any).shapeId = shapeId;

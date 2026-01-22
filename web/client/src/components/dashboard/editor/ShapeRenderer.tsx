@@ -162,7 +162,14 @@ export function createIconDataUrl(
   };
 
   const svgContent = iconPaths[iconType] || '';
+  if (!svgContent) {
+    console.warn(`No icon path found for type: ${iconType}`);
+    return '';
+  }
+  
   const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="${size}" height="${size}" viewBox="0 0 24 24" fill="none">${svgContent}</svg>`;
   
-  return `data:image/svg+xml,${encodeURIComponent(svg)}`;
+  // Properly encode the SVG for data URL
+  const encodedSvg = encodeURIComponent(svg);
+  return `data:image/svg+xml;charset=utf-8,${encodedSvg}`;
 }
