@@ -50,7 +50,7 @@ const JoinWorkspace = () => {
       const { data: invitation, error: inviteError } = await supabase
         .from("workspace_invitations")
         .select("*, workspaces(name)")
-        .eq("token", token)
+        .eq("token", token || "")
         .gt("expires_at", new Date().toISOString())
         .single();
 

@@ -3,10 +3,10 @@ import type { Config } from "tailwindcss";
 export default {
   darkMode: ["class"],
   content: [
-    "./pages/**/*.{ts,tsx}",
-    "./components/**/*.{ts,tsx}",
-    "./app/**/*.{ts,tsx}",
-    "./src/**/*.{ts,tsx}",
+    "./index.html",
+    "./src/**/*.{js,jsx,ts,tsx}",
+    "./src/pages/**/*.{ts,tsx}",
+    "./src/components/**/*.{ts,tsx}",
   ],
   prefix: "",
   theme: {
@@ -19,6 +19,8 @@ export default {
     },
     extend: {
       colors: {
+        // Colors are defined in @theme, but we keep these for compatibility
+        // They reference the CSS variables that are also used by @theme
         border: "hsl(var(--border))",
         input: "hsl(var(--input))",
         ring: "hsl(var(--ring))",

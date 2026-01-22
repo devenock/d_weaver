@@ -209,34 +209,7 @@ const Gallery = () => {
     setExportDialogOpen(true);
   };
 
-  const handleMoveToWorkspace = async (
-    diagram: Diagram,
-    workspaceId: string | null,
-  ) => {
-    try {
-      const { error } = await supabase
-        .from("diagrams")
-        .update({ workspace_id: workspaceId })
-        .eq("id", diagram.id);
-
-      if (error) throw error;
-
-      toast({
-        title: "Success",
-        description: workspaceId
-          ? "Diagram moved to workspace"
-          : "Diagram moved to personal diagrams",
-      });
-
-      loadDiagrams();
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    }
-  };
+  // Removed unused _handleMoveToWorkspace
 
   if (loading || workspacesLoading) {
     return (
