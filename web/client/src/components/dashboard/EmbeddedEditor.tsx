@@ -666,7 +666,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
         // After grouping, verify and fix image position if needed
         group.setCoords();
-        group.calcCoords();
+        group.setCoords();
         
         // Get the image from the group and verify its position
         const groupObjects = group.getObjects();
@@ -694,7 +694,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
             
             // Update the group
             group.setCoords();
-            group.calcCoords();
+            group.setCoords();
           }
         }
 

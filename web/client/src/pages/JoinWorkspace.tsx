@@ -160,7 +160,7 @@ const JoinWorkspace = () => {
                 <Button
                   onClick={() =>
                     navigate(
-                      `/auth?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`,
+                      `/login?redirect=${encodeURIComponent(window.location.pathname + window.location.search)}`,
                     )
                   }
                   className="mt-4"

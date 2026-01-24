@@ -366,7 +366,7 @@ const Whiteboard = () => {
   const handleSave = async () => {
     if (!user) {
       toast.error("Please sign in to save your whiteboard");
-      navigate("/auth");
+      navigate("/login", { replace: true });
       return;
     }
 

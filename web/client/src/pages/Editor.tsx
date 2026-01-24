@@ -387,7 +387,7 @@ const Editor = () => {
   const handleSaveDiagram = async () => {
     if (!user) {
       toast.error("Please sign in to save diagrams");
-      navigate("/auth");
+      navigate("/login", { replace: true });
       return;
     }
 

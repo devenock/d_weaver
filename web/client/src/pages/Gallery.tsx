@@ -75,7 +75,7 @@ const Gallery = () => {
     } = await supabase.auth.getSession();
 
     if (!session) {
-      navigate("/auth");
+      navigate("/login", { replace: true });
       return;
     }
 

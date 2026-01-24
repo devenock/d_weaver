@@ -7,6 +7,8 @@ import { ThemeProvider } from "@/components/ThemeProvider";
 import Index from "./pages/Index";
 import Editor from "./pages/Editor";
 import Auth from "./pages/Auth";
+import Login from "./pages/Login";
+import Signup from "./pages/Signup";
 import Gallery from "./pages/Gallery";
 import Dashboard from "./pages/Dashboard";
 import Whiteboard from "./pages/Whiteboard";
@@ -28,6 +30,8 @@ const App = () => (
             <Route path="/editor" element={<Editor />} />
             <Route path="/whiteboard" element={<Whiteboard />} />
             <Route path="/auth" element={<Auth />} />
+            <Route path="/login" element={<Login />} />
+            <Route path="/signup" element={<Signup />} />
             <Route path="/gallery" element={<Gallery />} />
             <Route path="/join-workspace" element={<JoinWorkspace />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}

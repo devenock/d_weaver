@@ -109,7 +109,7 @@ export const Navbar = () => {
             <Button
               variant="default"
               size="sm"
-              onClick={() => navigate("/auth")}
+              onClick={() => navigate("/login")}
             >
               Sign In
             </Button>
