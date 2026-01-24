@@ -1,0 +1,10 @@
+project_id = "ycwltlgrkqkzeueaaflf"
+
+[auth]
+enabled = true
+
+[functions.generate-diagram]
+verify_jwt = false
+
+[functions.send-workspace-invitation]
+verify_jwt = false

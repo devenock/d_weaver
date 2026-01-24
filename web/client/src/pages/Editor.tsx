@@ -43,12 +43,12 @@ import {
   DropdownMenuSeparator,
 } from "@/components/ui/dropdown-menu";
 import { supabase } from "@/integrations/supabase/client";
-import { User } from "@supabase/supabase-js";
+import type { User } from "@supabase/supabase-js";
 import { Navbar } from "@/components/Navbar";
 import { DiagramComments } from "@/components/DiagramComments";
 import {
   DiagramCustomizer,
-  CustomColors,
+  type CustomColors,
 } from "@/components/DiagramCustomizer";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
 import {

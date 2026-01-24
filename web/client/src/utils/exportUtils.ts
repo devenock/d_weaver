@@ -41,7 +41,7 @@ export const exportAsPNG = async (
     let height = parseFloat(clonedSvg.getAttribute("height") || "600");
 
     if (viewBox) {
-      const [x, y, vbWidth, vbHeight] = viewBox.split(" ").map(Number);
+      const [, , vbWidth, vbHeight] = viewBox.split(" ").map(Number);
       width = vbWidth || width;
       height = vbHeight || height;
     }
@@ -57,10 +57,10 @@ export const exportAsPNG = async (
 
     // Adjust viewBox to include padding
     if (viewBox) {
-      const [x, y, vbWidth, vbHeight] = viewBox.split(" ").map(Number);
+      const [vbX, vbY, vbWidth, vbHeight] = viewBox.split(" ").map(Number);
       clonedSvg.setAttribute(
         "viewBox",
-        `${x - padding} ${y - padding} ${vbWidth + padding * 2} ${vbHeight + padding * 2}`,
+        `${vbX - padding} ${vbY - padding} ${vbWidth + padding * 2} ${vbHeight + padding * 2}`,
       );
     }
 

@@ -36,7 +36,7 @@ import { toast } from "sonner";
 import { Navbar } from "@/components/Navbar";
 import { supabase } from "@/integrations/supabase/client";
 import { useNavigate, useSearchParams } from "react-router-dom";
-import { User } from "@supabase/supabase-js";
+import type { User } from "@supabase/supabase-js";
 import jsPDF from "jspdf";
 import { ExportEmbedDialog } from "@/components/ExportEmbedDialog";
 
@@ -383,7 +383,7 @@ const Whiteboard = () => {
         return;
       }
 
-      const group = new FabricCanvas();
+      // Removed unused _group
       let minX = Infinity,
         minY = Infinity,
         maxX = -Infinity,
