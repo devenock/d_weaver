@@ -74,7 +74,7 @@ const Dashboard = () => {
         data: { session },
       } = await supabase.auth.getSession();
       if (!session) {
-        navigate("/auth");
+        navigate("/login", { replace: true });
         return;
       }
       setUser(session.user);
@@ -86,7 +86,7 @@ const Dashboard = () => {
       data: { subscription },
     } = supabase.auth.onAuthStateChange((_event, session) => {
       if (!session) {
-        navigate("/auth");
+        navigate("/login", { replace: true });
         return;
       }
       setUser(session.user);
