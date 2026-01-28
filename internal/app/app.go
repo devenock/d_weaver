@@ -10,9 +10,12 @@ import (
 	"time"
 
 	"github.com/devenock/d_weaver/internal/auth/handler"
+	"github.com/devenock/d_weaver/internal/auth/jwt"
 	authrepo "github.com/devenock/d_weaver/internal/auth/repository"
 	authsvc "github.com/devenock/d_weaver/internal/auth/service"
 	"github.com/devenock/d_weaver/internal/config"
+	"github.com/devenock/d_weaver/internal/db"
+	"github.com/devenock/d_weaver/internal/docs"
 	"github.com/gin-gonic/gin"
 )
 
@@ -24,6 +27,7 @@ type App struct {
 }
 
 // New builds the Gin engine, binds routes and middleware, and returns App and Server.
+// Requires cfg.DB.URL and JWT config (PrivateKeyPath or RefreshTokenSecret for dev).
 func New(cfg *config.Config) (*App, error) {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
@@ -32,11 +36,22 @@ func New(cfg *config.Config) (*App, error) {
 	// Health and readiness (PDF: /health and /ready)
 	r.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
 	r.GET("/ready", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ready"}) })
+	// Swagger/OpenAPI per module (AGENTS: document each module)
+	r.GET("/api-docs/auth", docs.ServeAuth)
 
 	// API v1 group (PDF: /api/v1)
 	v1 := r.Group("/api/v1")
-	authRepo := authrepo.New()
-	authSvc := authsvc.New(authRepo)
+
+	pool, err := db.Pool(context.Background(), cfg)
+	if err != nil {
+		return nil, fmt.Errorf("app: db: %w", err)
+	}
+	jwtIssuer, err := jwt.NewIssuer(&cfg.JWT)
+	if err != nil {
+		return nil, fmt.Errorf("app: jwt: %w", err)
+	}
+	authRepo := authrepo.New(pool)
+	authSvc := authsvc.New(authRepo, jwtIssuer, cfg.JWT.AccessDurationMinutes, cfg.JWT.RefreshDurationDays)
 	authHandler := handler.New(authSvc)
 	authHandler.Register(v1)
 

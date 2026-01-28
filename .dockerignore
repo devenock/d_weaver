@@ -1,0 +1,38 @@
+# Git
+.git
+.gitignore
+
+# IDE
+.vscode
+.idea
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Build artifacts
+*.exe
+*.dll
+*.so
+*.dylib
+
+# Test
+*.test
+*.out
+coverage
+
+# Frontend (handled by web/client/.dockerignore)
+web/client/node_modules
+web/client/dist
+web/client/.vite
+
+# Docs (not needed in container)
+docs/*.pdf
+
+# Config files that may contain secrets (use env vars instead)
+config.yaml
+config.yml
+.env
+.env.local
