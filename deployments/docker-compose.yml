@@ -44,10 +44,10 @@ services:
       REDIS_URL: redis://redis:6379/0
       JWT_REFRESH_TOKEN_SECRET: dev-secret-change-in-production
       SERVER_HOST: 0.0.0.0
-      SERVER_PORT: 8080
-      CORS_ALLOWED_ORIGINS: '["http://localhost:5173","http://localhost:3000","http://localhost:80"]'
+      SERVER_PORT: 8200
+      CORS_ALLOWED_ORIGINS: '["http://localhost:5173","http://localhost:3000"]'
     ports:
-      - "8080:8080"
+      - "8200:8200"
     depends_on:
       postgres:
         condition: service_healthy
@@ -63,7 +63,7 @@ services:
       dockerfile: Dockerfile
     container_name: dweaver-client
     ports:
-      - "80:80"
+      - "3000:3000"
     depends_on:
       - api
     networks:
@@ -71,7 +71,7 @@ services:
     restart: unless-stopped
     environment:
       # Frontend can use these to call API (if needed at runtime)
-      - VITE_API_URL=http://localhost:8080
+      - VITE_API_URL=http://localhost:8200
 
 volumes:
   postgres_data:

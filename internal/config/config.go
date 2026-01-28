@@ -9,12 +9,12 @@ import (
 
 // Config holds application configuration from env/files (viper).
 type Config struct {
-	Server    ServerConfig   `mapstructure:"server"`
-	DB        DBConfig       `mapstructure:"db"`
-	Redis     RedisConfig    `mapstructure:"redis"`
-	JWT       JWTConfig      `mapstructure:"jwt"`
+	Server    ServerConfig    `mapstructure:"server"`
+	DB        DBConfig        `mapstructure:"db"`
+	Redis     RedisConfig     `mapstructure:"redis"`
+	JWT       JWTConfig       `mapstructure:"jwt"`
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
-	CORS      CORSConfig     `mapstructure:"cors"`
+	CORS      CORSConfig      `mapstructure:"cors"`
 }
 
 type ServerConfig struct {
@@ -42,14 +42,14 @@ type JWTConfig struct {
 	AccessDurationMinutes int    `mapstructure:"access_duration_minutes"`
 	RefreshDurationDays   int    `mapstructure:"refresh_duration_days"`
 	PrivateKeyPath        string `mapstructure:"private_key_path"` // RS256 private key path
-	PublicKeyPath         string `mapstructure:"public_key_path"`   // RS256 public key path
+	PublicKeyPath         string `mapstructure:"public_key_path"`  // RS256 public key path
 	Issuer                string `mapstructure:"issuer"`
 	RefreshTokenSecret    string `mapstructure:"refresh_token_secret"`
 }
 
 type RateLimitConfig struct {
 	RequestsPerMinute int
-	Enabled          bool
+	Enabled           bool
 }
 
 type CORSConfig struct {
@@ -66,7 +66,7 @@ func Load() (*Config, error) {
 
 	// defaults
 	v.SetDefault("server.host", "0.0.0.0")
-	v.SetDefault("server.port", 8080)
+	v.SetDefault("server.port", 8200)
 	v.SetDefault("server.read_timeout", 30)
 	v.SetDefault("server.write_timeout", 30)
 	v.SetDefault("db.max_open_conns", 25)
