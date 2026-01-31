@@ -278,6 +278,17 @@ a:hover { text-decoration: underline; }
   .lg\:grid-cols-2 { grid-template-columns: repeat(2, 1fr); }
 }
 
+/* Dashboard: matches React Dashboard (AppSidebar + DashboardHeader + DashboardContent) */
+.dashboard-layout { display: flex; width: 100%; min-height: 100vh; }
+.dashboard-sidebar { width: 16rem; }
+.dashboard-logo-icon { width: 1.75rem; height: 1.75rem; font-size: 0.875rem; }
+@media (min-width: 768px) { .dashboard-logo-icon { width: 2rem; height: 2rem; } }
+.dashboard-header { backdrop-filter: blur(8px); -webkit-backdrop-filter: blur(8px); }
+.dashboard-search-icon { font-size: 1rem; pointer-events: none; }
+.dashboard-search-input { color: hsl(var(--foreground)); }
+.dashboard-search-input::placeholder { color: hsl(var(--muted-foreground)); }
+.dashboard-card-actions { transition: opacity 0.15s; }
+
 /* Landing page: uniform background, modern layout, sleek hero CTAs */
 .landing-section {
   background-color: hsl(var(--background));

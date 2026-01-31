@@ -83,6 +83,7 @@ func (h *Handler) Register(r *gin.Engine) {
 	grp.GET("/dashboard", h.requireAuthCookie(h.serveDashboard))
 	if h.wsLister != nil && h.diagLister != nil {
 		grp.GET("/dashboard/partials/workspaces", h.requireAuthCookie(h.serveWorkspacesPartial))
+		grp.GET("/dashboard/partials/sidebar", h.requireAuthCookie(h.serveDashboardSidebarPartial))
 		grp.GET("/dashboard/partials/diagrams", h.requireAuthCookie(h.serveDiagramsPartial))
 		grp.GET("/gallery/partials/diagrams", h.requireAuthCookie(h.serveGalleryDiagramsPartial))
 	}
@@ -303,13 +304,83 @@ func (h *Handler) serveWorkspacesPartial(c *gin.Context) {
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(b.String()))
 }
 
-// serveDiagramsPartial returns HTML fragment of diagram cards for dashboard main.
+// serveDashboardSidebarPartial returns HTML for sidebar: Diagrams list, Whiteboards list, Recent list (matches React AppSidebar).
+func (h *Handler) serveDashboardSidebarPartial(c *gin.Context) {
+	userID := h.getUserID(c)
+	list, err := h.diagLister.ListDiagrams(c.Request.Context(), userID)
+	if err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	// Sort by updated_at desc (recent first)
+	for i := 0; i < len(list); i++ {
+		for j := i + 1; j < len(list); j++ {
+			if list[j].UpdatedAt.After(list[i].UpdatedAt) {
+				list[i], list[j] = list[j], list[i]
+			}
+		}
+	}
+	type sideItem struct {
+		ID        string
+		Title     string
+		EditorURL string
+	}
+	var diagrams, whiteboards, recent []sideItem
+	for i := range list {
+		url := "/editor?id=" + list[i].ID.String()
+		if list[i].DiagramType == "whiteboard" {
+			url = "/whiteboard?id=" + list[i].ID.String()
+		}
+		item := sideItem{ID: list[i].ID.String(), Title: list[i].Title, EditorURL: url}
+		if list[i].DiagramType == "whiteboard" {
+			whiteboards = append(whiteboards, item)
+		} else {
+			diagrams = append(diagrams, item)
+		}
+	}
+	for i := 0; i < len(list) && i < 5; i++ {
+		url := "/editor?id=" + list[i].ID.String()
+		if list[i].DiagramType == "whiteboard" {
+			url = "/whiteboard?id=" + list[i].ID.String()
+		}
+		recent = append(recent, sideItem{ID: list[i].ID.String(), Title: list[i].Title, EditorURL: url})
+	}
+	if len(diagrams) > 10 {
+		diagrams = diagrams[:10]
+	}
+	if len(whiteboards) > 10 {
+		whiteboards = whiteboards[:10]
+	}
+	tpl := template.Must(template.New("sidebar").Parse(partialDashboardSidebarHTML))
+	var b strings.Builder
+	if err := tpl.Execute(&b, map[string]interface{}{
+		"Diagrams":   diagrams,
+		"Whiteboards": whiteboards,
+		"Recent":     recent,
+	}); err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(b.String()))
+}
+
+// serveDiagramsPartial returns HTML fragment of diagram cards for dashboard main. Supports ?q= for search.
 func (h *Handler) serveDiagramsPartial(c *gin.Context) {
 	userID := h.getUserID(c)
 	list, err := h.diagLister.ListDiagrams(c.Request.Context(), userID)
 	if err != nil {
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
+	}
+	q := strings.TrimSpace(strings.ToLower(c.Query("q")))
+	if q != "" {
+		filtered := make([]diagrammodel.DiagramResponse, 0, len(list))
+		for _, d := range list {
+			if strings.Contains(strings.ToLower(d.Title), q) || strings.Contains(strings.ToLower(d.DiagramType), q) {
+				filtered = append(filtered, d)
+			}
+		}
+		list = filtered
 	}
 	// Sort by updated_at desc (recent first)
 	type diagramWithTime struct {
@@ -457,12 +528,61 @@ const partialWorkspacesHTML = `
 </div>
 `
 
+const partialDashboardSidebarHTML = `
+<div id="dashboard-sidebar-nav" class="space-y-4">
+  <div>
+    <div class="flex items-center justify-between mb-1">
+      <p class="text-xs font-medium text-muted-foreground">Diagrams</p>
+      <a href="/editor" class="text-xs text-primary hover:underline">+</a>
+    </div>
+    <div class="space-y-0.5">
+      {{range .Diagrams}}
+      <a href="{{.EditorURL}}" class="block rounded-md px-2 py-1.5 text-sm truncate hover:bg-muted/50" style="text-decoration:none;color:inherit;">{{.Title}}</a>
+      {{else}}
+      <p class="px-2 py-1.5 text-xs text-muted-foreground">No diagrams yet</p>
+      {{end}}
+    </div>
+  </div>
+  <div>
+    <div class="flex items-center justify-between mb-1">
+      <p class="text-xs font-medium text-muted-foreground">Whiteboards</p>
+      <a href="/whiteboard" class="text-xs text-primary hover:underline">+</a>
+    </div>
+    <div class="space-y-0.5">
+      {{range .Whiteboards}}
+      <a href="{{.EditorURL}}" class="block rounded-md px-2 py-1.5 text-sm truncate hover:bg-muted/50" style="text-decoration:none;color:inherit;">{{.Title}}</a>
+      {{else}}
+      <p class="px-2 py-1.5 text-xs text-muted-foreground">No whiteboards yet</p>
+      {{end}}
+    </div>
+  </div>
+  <div>
+    <p class="text-xs font-medium text-muted-foreground mb-1">Recent</p>
+    <div class="space-y-0.5">
+      {{range .Recent}}
+      <a href="{{.EditorURL}}" class="block rounded-md px-2 py-1.5 text-sm truncate hover:bg-muted/50" style="text-decoration:none;color:inherit;">{{.Title}}</a>
+      {{else}}
+      <p class="px-2 py-1.5 text-xs text-muted-foreground">No recent items</p>
+      {{end}}
+    </div>
+  </div>
+</div>
+`
+
 const partialDiagramsHTML = `
 <div id="dashboard-diagrams" class="grid gap-4" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem;">
   {{range .Diagrams}}
-  <a href="{{.EditorURL}}" class="rounded-xl border border-border bg-card p-4 shadow-sm hover:shadow-md transition-shadow block" style="text-decoration:none;color:inherit;">
+  <div class="dashboard-card rounded-xl border border-border bg-card p-4 shadow-sm hover:shadow-md transition-shadow group" data-diagram-id="{{.ID}}">
     <div class="flex items-start justify-between gap-2">
-      <h3 class="font-semibold text-base truncate flex-1" style="min-width:0;">{{.Title}}</h3>
+      <h3 class="font-semibold text-base truncate flex-1" style="min-width:0;"><a href="{{.EditorURL}}" class="hover:underline" style="text-decoration:none;color:inherit;">{{.Title}}</a></h3>
+      <div class="dashboard-card-actions flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+        <a href="{{.EditorURL}}" class="btn btn-ghost btn-sm" title="View">View</a>
+        <button type="button" class="dashboard-share btn btn-ghost btn-sm" data-id="{{.ID}}" title="Share">Share</button>
+        {{if .ImageURL}}
+        <a href="{{safeURL .ImageURL}}" download="{{.Title}}.png" class="btn btn-ghost btn-sm" title="Download">Download</a>
+        {{end}}
+        <button type="button" class="dashboard-delete btn btn-ghost btn-sm text-destructive" data-id="{{.ID}}" title="Delete">Delete</button>
+      </div>
     </div>
     <p class="text-xs text-muted-foreground mt-1">{{.DiagramType}} • {{.UpdatedAtFormatted}}</p>
     <div class="mt-3 rounded-md bg-muted/50 h-24 flex items-center justify-center overflow-hidden" style="min-height:6rem;">
@@ -472,7 +592,7 @@ const partialDiagramsHTML = `
       <span class="text-xs text-muted-foreground">No preview</span>
       {{end}}
     </div>
-  </a>
+  </div>
   {{else}}
   <div class="col-span-full rounded-xl border border-dashed border-border bg-card p-8 text-center" style="grid-column:1/-1;">
     <p class="text-muted-foreground mb-4">No diagrams yet. Create your first one!</p>

@@ -9,58 +9,117 @@
   <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
 </head>
 <body class="min-h-screen bg-background">
-  <!-- Navbar (authenticated) -->
-  <nav class="border-b border-border bg-background/95 sticky top-0 z-50 w-full">
-    <div class="w-full px-4 h-16 flex items-center justify-between">
-      <div class="flex items-center gap-6">
-        <a href="/" class="text-xl font-bold bg-clip-text text-transparent" style="background: linear-gradient(to right, hsl(var(--primary)), hsl(var(--primary) / 0.8)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">DiagramGen</a>
-        <div class="hidden md:flex items-center gap-4">
-          <a href="/" class="btn btn-ghost btn-sm">Home</a>
-          <a href="/dashboard" class="btn btn-ghost btn-sm">Dashboard</a>
-          <a href="/editor" class="btn btn-ghost btn-sm">Editor</a>
-          <a href="/whiteboard" class="btn btn-ghost btn-sm">Whiteboard</a>
-          <a href="/gallery" class="btn btn-ghost btn-sm">Gallery</a>
-        </div>
+  <div class="dashboard-layout flex w-full min-h-screen">
+    <!-- Sidebar (matches React AppSidebar) -->
+    <aside class="dashboard-sidebar border-r border-border bg-card flex-shrink-0 hidden md:flex flex-col w-64">
+      <div class="p-4 border-b border-border">
+        <a href="/" class="flex items-center gap-2" style="text-decoration:none;color:inherit;">
+          <span class="dashboard-logo-icon flex items-center justify-center rounded-lg bg-primary text-primary-foreground flex-shrink-0">📄</span>
+          <span class="font-bold bg-clip-text text-transparent" style="background:linear-gradient(to right, hsl(var(--primary)), hsl(var(--primary) / 0.8)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">DiagramGen</span>
+        </a>
       </div>
-      <div class="flex items-center gap-4">
-        <button type="button" class="theme-toggle btn btn-ghost btn-sm" aria-label="Toggle theme"></button>
-        <span class="text-sm text-muted-foreground" id="user-email">{{.UserEmail}}</span>
-        <form method="post" action="/logout" class="inline">
-          <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
-        </form>
-      </div>
-    </div>
-  </nav>
-
-  <div class="flex w-full min-h-[calc(100vh-4rem)]" style="display: flex; min-height: calc(100vh - 4rem);">
-    <!-- Sidebar -->
-    <aside class="w-64 border-r border-border bg-card flex-shrink-0 p-4 hidden md:block" style="width: 16rem; border-right: 1px solid hsl(var(--border)); background-color: hsl(var(--card)); padding: 1rem;">
-      <div class="space-y-4">
+      <div class="flex-1 overflow-auto p-4 space-y-4">
         <div>
-          <p class="text-xs font-medium text-muted-foreground mb-2">Create</p>
-          <a href="/editor" class="btn btn-primary btn-sm w-full mb-2">New Diagram</a>
-          <a href="/whiteboard" class="btn btn-outline btn-sm w-full">New Whiteboard</a>
+          <p class="text-xs font-medium text-muted-foreground mb-2">Workspaces</p>
+          <div id="sidebar-workspaces" hx-get="/dashboard/partials/workspaces" hx-trigger="load" hx-swap="innerHTML">
+            <p class="text-sm text-muted-foreground">Loading…</p>
+          </div>
         </div>
-        <div id="sidebar-workspaces" hx-get="/dashboard/partials/workspaces" hx-trigger="load" hx-swap="innerHTML">
-          <p class="text-sm text-muted-foreground">Loading workspaces…</p>
+        <div id="sidebar-nav" hx-get="/dashboard/partials/sidebar" hx-trigger="load" hx-swap="innerHTML">
+          <p class="text-sm text-muted-foreground">Loading…</p>
         </div>
+      </div>
+      <div class="p-4 border-t border-border text-xs text-muted-foreground text-center">
+        <span id="sidebar-current-workspace">Personal</span>
       </div>
     </aside>
 
-    <!-- Main content -->
-    <main class="flex-1 p-6 overflow-auto" style="flex: 1; padding: 1.5rem;">
-      <div class="flex items-center justify-between mb-6">
-        <div>
-          <h1 class="text-2xl font-bold">Your Diagrams</h1>
-          <p class="text-muted-foreground text-sm" style="color: hsl(var(--muted-foreground));">Create, manage, and share your diagrams</p>
+    <!-- Main area (matches React SidebarInset) -->
+    <div class="dashboard-main flex flex-col flex-1 min-w-0">
+      <!-- Header (matches React DashboardHeader) -->
+      <header class="dashboard-header sticky top-0 z-40 flex h-14 md:h-16 w-full items-center gap-2 md:gap-4 border-b border-border bg-background/95 px-3 md:px-6 shrink-0">
+        <div class="flex-1 min-w-0 max-w-lg">
+          <div class="relative">
+            <span class="dashboard-search-icon absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true">🔍</span>
+            <input type="search" id="dashboard-search" placeholder="Search..." class="dashboard-search-input w-full pl-9 pr-3 py-2 text-sm rounded-md border border-border bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring" />
+          </div>
         </div>
-        <a href="/editor" class="btn btn-primary gap-2">+ New Diagram</a>
-      </div>
+        <div class="flex items-center gap-2 flex-shrink-0 ml-auto">
+          <button type="button" class="theme-toggle btn btn-ghost btn-sm" aria-label="Toggle theme"></button>
+          <span class="text-sm text-muted-foreground truncate max-w-[180px]" id="user-email" title="{{.UserEmail}}">{{.UserEmail}}</span>
+          <form method="post" action="/logout" class="inline">
+            <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
+          </form>
+        </div>
+      </header>
 
-      <div id="dashboard-diagrams-container" hx-get="/dashboard/partials/diagrams" hx-trigger="load" hx-swap="innerHTML">
-        <p class="text-muted-foreground">Loading diagrams…</p>
-      </div>
-    </main>
+      <!-- Content (matches React DashboardContent) -->
+      <main class="flex-1 p-6 overflow-auto">
+        <div class="flex items-center justify-between mb-6">
+          <div>
+            <h1 class="text-2xl font-bold">Your Diagrams</h1>
+            <p class="text-muted-foreground text-sm">Create, manage, and share your diagrams</p>
+          </div>
+          <a href="/editor" class="btn btn-primary gap-2">+ New Diagram</a>
+        </div>
+
+        <div id="dashboard-diagrams-container" hx-get="/dashboard/partials/diagrams" hx-trigger="load" hx-swap="innerHTML">
+          <p class="text-muted-foreground">Loading diagrams…</p>
+        </div>
+      </main>
+    </div>
   </div>
+
+  <script>
+(function() {
+  var API = '/api/v1';
+  var searchEl = document.getElementById('dashboard-search');
+  var diagramsContainer = document.getElementById('dashboard-diagrams-container');
+
+  if (searchEl) {
+    searchEl.addEventListener('input', function() {
+      var q = searchEl.value.trim();
+      var url = '/dashboard/partials/diagrams';
+      if (q) url += '?q=' + encodeURIComponent(q);
+      htmx.ajax('GET', url, { target: '#dashboard-diagrams-container', swap: 'innerHTML' });
+    });
+  }
+
+  document.body.addEventListener('htmx:afterSwap', function(ev) {
+    if (ev.detail.target.id !== 'dashboard-diagrams-container') return;
+    document.querySelectorAll('.dashboard-delete').forEach(function(btn) {
+      btn.onclick = function() {
+        var id = btn.dataset.id;
+        if (!id || !confirm('Delete this diagram?')) return;
+        fetch(API + '/diagrams/' + id, { method: 'DELETE', credentials: 'include' })
+          .then(function(r) {
+            if (r.ok) {
+              var card = btn.closest('.dashboard-card');
+              if (card) card.remove();
+              var sidebarNav = document.getElementById('sidebar-nav');
+              if (sidebarNav) htmx.ajax('GET', '/dashboard/partials/sidebar', { target: '#sidebar-nav', swap: 'innerHTML' });
+              var diagramsEl = document.getElementById('dashboard-diagrams-container');
+              if (diagramsEl && diagramsEl.children.length === 0) htmx.ajax('GET', '/dashboard/partials/diagrams', { target: '#dashboard-diagrams-container', swap: 'innerHTML' });
+            }
+          });
+      };
+    });
+    document.querySelectorAll('.dashboard-share').forEach(function(btn) {
+      btn.onclick = function() {
+        var id = btn.dataset.id;
+        if (!id) return;
+        fetch(API + '/diagrams/' + id, {
+          method: 'PUT',
+          credentials: 'include',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ is_public: true })
+        }).then(function(r) {
+          if (r.ok) navigator.clipboard.writeText(window.location.origin + '/gallery?view=' + id);
+        });
+      };
+    });
+  });
+})();
+  </script>
 </body>
 </html>
