@@ -44,8 +44,17 @@ go run ./cmd/api
 
 Then open http://localhost:8200/ (or your configured host/port). The same server serves the API (`/api/v1/*`) and the static frontend.
 
+## Phase 3 scope (editor with Mermaid island)
+
+- **Editor** (`/editor`) – protected (requires auth cookie). Full Mermaid editor:
+  - Title input, toolbar: Save, Export SVG, Export PNG, Copy.
+  - Diagram type dropdown (flowchart, sequence, class, state, er, gantt, mindmap, journey) with example code.
+  - Split layout: left = Mermaid source textarea, right = live preview (Mermaid “island” – Mermaid.js from CDN, render on input).
+  - Load: `?id=` or `?diagramId=` → `GET /api/v1/diagrams/:id` (with cookie), populate title and content.
+  - Save: `POST /api/v1/diagrams` (new) or `PUT /api/v1/diagrams/:id` (update), with cookie. Diagram type derived from first line of content.
+  - Export SVG/PNG and Copy from the preview SVG.
+
 ## Later phases
 
-- **Phase 3**: Editor page with Mermaid island
 - **Phase 4**: Whiteboard as embedded JS app
 - **Phase 5**: Real-time collaboration (JS + WebSocket)

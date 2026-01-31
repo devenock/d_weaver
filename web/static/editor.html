@@ -5,18 +5,230 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Editor – DiagramGen</title>
   <link rel="stylesheet" href="/static/css/site.css" />
+  <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+  <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js" defer></script>
 </head>
 <body class="min-h-screen bg-background">
   <nav class="border-b border-border bg-background/95 sticky top-0 z-50 w-full">
     <div class="w-full px-4 h-16 flex items-center justify-between">
       <a href="/" class="text-xl font-bold bg-clip-text text-transparent" style="background: linear-gradient(to right, hsl(var(--primary)), hsl(var(--primary) / 0.8)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">DiagramGen</a>
-      <a href="/dashboard" class="btn btn-ghost btn-sm">Dashboard</a>
+      <div class="flex items-center gap-4">
+        <a href="/dashboard" class="btn btn-ghost btn-sm">Dashboard</a>
+      </div>
     </div>
   </nav>
-  <main class="container mx-auto px-4 py-16 text-center" style="max-width: 80rem;">
-    <h1 class="text-3xl font-bold mb-4">Diagram Editor</h1>
-    <p class="text-muted-foreground mb-6" style="color: hsl(var(--muted-foreground));">Mermaid-based editor will be available in a later phase. Use the React app for now or check back soon.</p>
-    <a href="/dashboard" class="btn btn-primary">Go to Dashboard</a>
+
+  <main class="container mx-auto px-4 py-6" style="max-width: 90rem;">
+    <!-- Toolbar -->
+    <div class="flex flex-col sm:flex-row gap-4 mb-6">
+      <input type="text" id="diagram-title" class="flex-1 text-lg font-medium h-12 border-0 shadow-none px-0 bg-transparent focus:outline-none focus:ring-0" placeholder="Diagram title..." value="Untitled Diagram" style="border: none; background: transparent;" />
+      <div class="flex items-center gap-2 flex-wrap">
+        <button type="button" id="btn-save" class="btn btn-primary btn-sm">Save</button>
+        <button type="button" id="btn-export-svg" class="btn btn-outline btn-sm">Export SVG</button>
+        <button type="button" id="btn-export-png" class="btn btn-outline btn-sm">Export PNG</button>
+        <button type="button" id="btn-copy" class="btn btn-outline btn-sm">Copy</button>
+      </div>
+    </div>
+
+    <!-- Diagram type + split layout -->
+    <div class="flex gap-4 mb-4">
+      <label class="flex items-center gap-2 text-sm text-muted-foreground">
+        <span>Type:</span>
+        <select id="diagram-type" class="rounded border border-border bg-background px-3 py-2 text-sm" style="color: hsl(var(--foreground));">
+          <option value="flowchart">Flowchart</option>
+          <option value="sequence">Sequence</option>
+          <option value="class">Class</option>
+          <option value="state">State</option>
+          <option value="er">ER Diagram</option>
+          <option value="gantt">Gantt</option>
+          <option value="mindmap">Mind Map</option>
+          <option value="journey">User Journey</option>
+        </select>
+      </label>
+    </div>
+
+    <div class="grid grid-cols-1 lg:grid-cols-2 gap-6" style="gap: 1.5rem;">
+      <!-- Left: Mermaid source -->
+      <div class="rounded-xl border border-border bg-card p-4 shadow-sm" style="min-height: 400px;">
+        <label class="block text-sm font-medium text-muted-foreground mb-2">Mermaid source</label>
+        <textarea id="mermaid-source" class="w-full min-h-[360px] font-mono text-sm resize-y rounded border border-border bg-background p-3 focus:outline-none focus:ring-2 focus:ring-ring" placeholder="Enter Mermaid code..." style="min-height: 360px; resize: vertical;">flowchart TD
+    A[Start] --> B{Decision}
+    B -->|Yes| C[Action]
+    B -->|No| D[End]
+    C --> D</textarea>
+      </div>
+      <!-- Right: Mermaid output (island) -->
+      <div class="rounded-xl border border-border bg-card p-4 shadow-sm flex items-center justify-center min-h-[400px]" style="min-height: 400px;">
+        <div id="mermaid-output" class="w-full min-h-[360px] flex items-center justify-center text-muted-foreground" style="min-height: 360px;">
+          <span>Rendering…</span>
+        </div>
+      </div>
+    </div>
+
+    <p id="editor-error" class="hidden mt-4 alert-error" role="alert"></p>
   </main>
+
+  <script>
+(function() {
+  var API = '/api/v1';
+  var diagramTypes = {
+    flowchart: 'flowchart TD\n    A[Start] --> B{Decision}\n    B -->|Yes| C[Action]\n    B -->|No| D[End]\n    C --> D',
+    sequence: 'sequenceDiagram\n    participant User\n    participant System\n    User->>System: Request\n    System-->>User: Response',
+    class: 'classDiagram\n    class User {\n        +String name\n        +String email\n        +login()\n    }',
+    state: 'stateDiagram-v2\n    [*] --> Idle\n    Idle --> Processing\n    Processing --> Complete\n    Complete --> [*]',
+    er: 'erDiagram\n    USER ||--o{ ORDER : places\n    ORDER ||--|{ ITEM : contains',
+    gantt: 'gantt\n    title Project Timeline\n    section Phase 1\n    Task 1: 2024-01-01, 7d\n    Task 2: 2024-01-08, 5d',
+    mindmap: 'mindmap\n  root((Project))\n    Planning\n    Development\n    Deployment',
+    journey: 'journey\n    title User Journey\n    section Discovery\n      Find Website: 5: User\n    section Engagement\n      Sign Up: 3: User'
+  };
+
+  var currentId = null;
+  var sourceEl = document.getElementById('mermaid-source');
+  var outputEl = document.getElementById('mermaid-output');
+  var titleEl = document.getElementById('diagram-title');
+  var typeEl = document.getElementById('diagram-type');
+  var errorEl = document.getElementById('editor-error');
+  var renderTimer = null;
+
+  function showError(msg) {
+    errorEl.textContent = msg || '';
+    errorEl.classList.toggle('hidden', !msg);
+  }
+
+  function getDiagramTypeFromContent(content) {
+    var first = (content || '').trim().split('\n')[0] || '';
+    var m = first.match(/^(flowchart|graph|sequenceDiagram|classDiagram|stateDiagram-v2|stateDiagram|erDiagram|gantt|mindmap|journey|pie|timeline)/);
+    return m ? m[1].replace(/-v2$/, '') : 'flowchart';
+  }
+
+  function render() {
+    var content = sourceEl.value.trim();
+    if (!content) {
+      outputEl.innerHTML = '<span class="text-muted-foreground">Enter Mermaid code to preview.</span>';
+      return;
+    }
+    outputEl.innerHTML = '<span class="text-muted-foreground">Rendering…</span>';
+    var id = 'mermaid-' + Date.now();
+    mermaid.render(id, content).then(function(result) {
+      outputEl.innerHTML = result.svg;
+    }).catch(function(err) {
+      outputEl.innerHTML = '<div class="p-4 text-destructive text-sm">Invalid diagram syntax. Check your Mermaid code.</div>';
+      console.error(err);
+    });
+  }
+
+  function debounceRender() {
+    if (renderTimer) clearTimeout(renderTimer);
+    renderTimer = setTimeout(render, 300);
+  }
+
+  sourceEl.addEventListener('input', debounceRender);
+  typeEl.addEventListener('change', function() {
+    var ex = diagramTypes[typeEl.value];
+    if (ex) sourceEl.value = ex;
+    debounceRender();
+  });
+
+  function loadDiagram(id) {
+    fetch(API + '/diagrams/' + id, { credentials: 'include' })
+      .then(function(r) {
+        if (!r.ok) throw new Error('Failed to load diagram');
+        return r.json();
+      })
+      .then(function(json) {
+        var d = json.data || json;
+        currentId = d.id;
+        titleEl.value = d.title || 'Untitled Diagram';
+        sourceEl.value = d.content || '';
+        var t = getDiagramTypeFromContent(d.content);
+        for (var i = 0, opts = typeEl.options; i < opts.length; i++) {
+          if (opts[i].value === t) { typeEl.selectedIndex = i; break; }
+        }
+        debounceRender();
+      })
+      .catch(function() { showError('Could not load diagram.'); });
+  }
+
+  document.getElementById('btn-save').addEventListener('click', function() {
+    var title = titleEl.value.trim() || 'Untitled Diagram';
+    var content = sourceEl.value.trim();
+    if (!content) { showError('Add some Mermaid code first.'); return; }
+    var diagramType = getDiagramTypeFromContent(content);
+    var body = { title: title, content: content, diagram_type: diagramType, is_public: false };
+    var url = currentId ? API + '/diagrams/' + currentId : API + '/diagrams';
+    var method = currentId ? 'PUT' : 'POST';
+    fetch(url, {
+      method: method,
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify(body)
+    })
+      .then(function(r) {
+        if (!r.ok) return r.json().then(function(j) { throw new Error(j.message || 'Save failed'); });
+        return r.json();
+      })
+      .then(function(json) {
+        var d = json.data || json;
+        if (d.id) currentId = d.id;
+        showError('');
+        if (window.history && window.history.replaceState)
+          window.history.replaceState({}, '', '/editor?id=' + (d.id || currentId));
+      })
+      .catch(function(e) { showError(e.message || 'Save failed'); });
+  });
+
+  document.getElementById('btn-copy').addEventListener('click', function() {
+    navigator.clipboard.writeText(sourceEl.value).then(function() { showError(''); });
+  });
+
+  function exportSvg() {
+    var svg = outputEl.querySelector('svg');
+    if (!svg) { showError('No diagram to export.'); return; }
+    var s = new XMLSerializer().serializeToString(svg);
+    var blob = new Blob([s], { type: 'image/svg+xml' });
+    var a = document.createElement('a');
+    a.href = URL.createObjectURL(blob);
+    a.download = (titleEl.value.trim() || 'diagram') + '.svg';
+    a.click();
+    URL.revokeObjectURL(a.href);
+  }
+
+  function exportPng() {
+    var svg = outputEl.querySelector('svg');
+    if (!svg) { showError('No diagram to export.'); return; }
+    var svgData = new XMLSerializer().serializeToString(svg);
+    var img = new Image();
+    img.onload = function() {
+      var canvas = document.createElement('canvas');
+      var bbox = svg.getBBox();
+      canvas.width = bbox.width * 2;
+      canvas.height = bbox.height * 2;
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(2, 2);
+      ctx.drawImage(img, 0, 0);
+      canvas.toBlob(function(blob) {
+        var a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = (titleEl.value.trim() || 'diagram') + '.png';
+        a.click();
+        URL.revokeObjectURL(a.href);
+      }, 'image/png');
+    };
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+  }
+
+  document.getElementById('btn-export-svg').addEventListener('click', exportSvg);
+  document.getElementById('btn-export-png').addEventListener('click', exportPng);
+
+  // Init Mermaid then load or render
+  mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });
+  var params = new URLSearchParams(window.location.search);
+  var id = params.get('id') || params.get('diagramId');
+  if (id) loadDiagram(id);
+  else render();
+})();
+  </script>
 </body>
 </html>

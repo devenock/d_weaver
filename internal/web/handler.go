@@ -79,7 +79,7 @@ func (h *Handler) Register(r *gin.Engine) {
 	grp.GET("/signup", h.servePage("signup.html"))
 	grp.GET("/gallery", h.servePage("gallery.html"))
 	grp.GET("/join-workspace", h.servePage("join-workspace.html"))
-	grp.GET("/editor", h.servePage("editor.html"))
+	grp.GET("/editor", h.requireAuthCookie(h.servePage("editor.html")))
 	grp.GET("/whiteboard", h.servePage("whiteboard.html"))
 	grp.GET("/dashboard", h.requireAuthCookie(h.serveDashboard))
 	if h.wsLister != nil && h.diagLister != nil {
