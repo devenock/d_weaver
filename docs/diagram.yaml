@@ -1,0 +1,454 @@
+openapi: 3.0.3
+info:
+  title: DWeaver Diagram API
+  description: Diagram CRUD, image upload, and comments (DWeaver Backend Project Requirements).
+  version: 1.0.0
+
+servers:
+  - url: /api/v1
+    description: API v1 base
+
+tags:
+  - name: diagrams
+    description: Diagram CRUD and image upload
+  - name: comments
+    description: Comments on diagrams
+
+security:
+  - BearerAuth: []
+
+paths:
+  /diagrams:
+    get:
+      tags: [diagrams]
+      summary: List diagrams
+      description: Returns diagrams the user can access (personal + workspace member).
+      operationId: listDiagrams
+      responses:
+        '200':
+          description: List of diagrams
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagramListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+    post:
+      tags: [diagrams]
+      summary: Create diagram
+      description: Creates a diagram (optionally in a workspace; user must be workspace member).
+      operationId: createDiagram
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/CreateDiagramRequest'
+      responses:
+        '201':
+          description: Diagram created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagramDataResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+
+  /diagrams/public:
+    get:
+      tags: [diagrams]
+      summary: List public diagrams
+      description: Returns public diagrams (discovery).
+      operationId: listPublicDiagrams
+      responses:
+        '200':
+          description: List of public diagrams
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagramListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+
+  /diagrams/{id}:
+    get:
+      tags: [diagrams]
+      summary: Get diagram
+      description: Returns diagram if the user has access (owner, workspace member, or public).
+      operationId: getDiagram
+      parameters:
+        - $ref: '#/components/parameters/DiagramId'
+      responses:
+        '200':
+          description: Diagram details
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagramDataResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    put:
+      tags: [diagrams]
+      summary: Update diagram
+      description: Updates diagram (owner or workspace admin/owner).
+      operationId: updateDiagram
+      parameters:
+        - $ref: '#/components/parameters/DiagramId'
+      requestBody:
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateDiagramRequest'
+      responses:
+        '200':
+          description: Diagram updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagramDataResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [diagrams]
+      summary: Delete diagram
+      description: Deletes the diagram (owner or workspace admin/owner).
+      operationId: deleteDiagram
+      parameters:
+        - $ref: '#/components/parameters/DiagramId'
+      responses:
+        '204':
+          description: Diagram deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /diagrams/{id}/image:
+    post:
+      tags: [diagrams]
+      summary: Upload diagram image
+      description: Upload an image for the diagram (multipart form field 'file'). Max 10MB. Allowed types image/png, image/jpeg, image/gif, image/webp.
+      operationId: uploadDiagramImage
+      parameters:
+        - $ref: '#/components/parameters/DiagramId'
+      requestBody:
+        required: true
+        content:
+          multipart/form-data:
+            schema:
+              type: object
+              required: [file]
+              properties:
+                file:
+                  type: string
+                  format: binary
+      responses:
+        '200':
+          description: Diagram updated with image_url
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/DiagramDataResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /diagrams/{id}/comments:
+    get:
+      tags: [comments]
+      summary: List comments
+      description: Returns comments for the diagram (user must have access to diagram).
+      operationId: listComments
+      parameters:
+        - $ref: '#/components/parameters/DiagramId'
+      responses:
+        '200':
+          description: List of comments
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentListResponse'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    post:
+      tags: [comments]
+      summary: Add comment
+      description: Adds a comment to the diagram.
+      operationId: addComment
+      parameters:
+        - $ref: '#/components/parameters/DiagramId'
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/AddCommentRequest'
+      responses:
+        '201':
+          description: Comment created
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentDataResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+  /diagrams/{id}/comments/{commentId}:
+    put:
+      tags: [comments]
+      summary: Update comment
+      description: Updates a comment (author or diagram owner/admin).
+      operationId: updateComment
+      parameters:
+        - $ref: '#/components/parameters/DiagramId'
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/UpdateCommentRequest'
+      responses:
+        '200':
+          description: Comment updated
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/CommentDataResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+    delete:
+      tags: [comments]
+      summary: Delete comment
+      description: Deletes a comment (author or diagram owner/admin).
+      operationId: deleteComment
+      parameters:
+        - $ref: '#/components/parameters/DiagramId'
+        - name: commentId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+      responses:
+        '204':
+          description: Comment deleted
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '403':
+          $ref: '#/components/responses/Forbidden'
+        '404':
+          $ref: '#/components/responses/NotFound'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  parameters:
+    DiagramId:
+      name: id
+      in: path
+      required: true
+      schema:
+        type: string
+        format: uuid
+  schemas:
+    DiagramResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        title:
+          type: string
+        content:
+          type: string
+        diagram_type:
+          type: string
+        image_url:
+          type: string
+          nullable: true
+        is_public:
+          type: boolean
+        user_id:
+          type: string
+          format: uuid
+          nullable: true
+        workspace_id:
+          type: string
+          format: uuid
+          nullable: true
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    CreateDiagramRequest:
+      type: object
+      required: [title, content, diagram_type]
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        content:
+          type: string
+        diagram_type:
+          type: string
+          maxLength: 50
+        is_public:
+          type: boolean
+          default: false
+        workspace_id:
+          type: string
+          format: uuid
+          nullable: true
+    UpdateDiagramRequest:
+      type: object
+      properties:
+        title:
+          type: string
+          maxLength: 255
+        content:
+          type: string
+        diagram_type:
+          type: string
+          maxLength: 50
+        is_public:
+          type: boolean
+    DiagramListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/DiagramResponse'
+    DiagramDataResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/DiagramResponse'
+    CommentResponse:
+      type: object
+      properties:
+        id:
+          type: string
+          format: uuid
+        diagram_id:
+          type: string
+          format: uuid
+        user_id:
+          type: string
+          format: uuid
+        comment_text:
+          type: string
+        created_at:
+          type: string
+          format: date-time
+        updated_at:
+          type: string
+          format: date-time
+    AddCommentRequest:
+      type: object
+      required: [comment_text]
+      properties:
+        comment_text:
+          type: string
+          maxLength: 4096
+    UpdateCommentRequest:
+      type: object
+      required: [comment_text]
+      properties:
+        comment_text:
+          type: string
+          maxLength: 4096
+    CommentListResponse:
+      type: object
+      properties:
+        data:
+          type: array
+          items:
+            $ref: '#/components/schemas/CommentResponse'
+    CommentDataResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/CommentResponse'
+    ErrorBody:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+  responses:
+    BadRequest:
+      description: Invalid or missing input
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    Unauthorized:
+      description: Missing or invalid token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    Forbidden:
+      description: Not allowed
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    NotFound:
+      description: Resource not found
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'

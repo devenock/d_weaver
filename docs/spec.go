@@ -13,6 +13,9 @@ var AuthSpecYAML []byte
 //go:embed workspace.yaml
 var WorkspaceSpecYAML []byte
 
+//go:embed diagram.yaml
+var DiagramSpecYAML []byte
+
 // ServeAuth writes the auth OpenAPI 3.0 spec (YAML) with content-type application/yaml.
 func ServeAuth(c *gin.Context) {
 	c.Data(http.StatusOK, "application/yaml", AuthSpecYAML)
@@ -21,4 +24,9 @@ func ServeAuth(c *gin.Context) {
 // ServeWorkspace writes the workspace OpenAPI 3.0 spec (YAML) with content-type application/yaml.
 func ServeWorkspace(c *gin.Context) {
 	c.Data(http.StatusOK, "application/yaml", WorkspaceSpecYAML)
+}
+
+// ServeDiagram writes the diagram OpenAPI 3.0 spec (YAML) with content-type application/yaml.
+func ServeDiagram(c *gin.Context) {
+	c.Data(http.StatusOK, "application/yaml", DiagramSpecYAML)
 }

@@ -9,16 +9,19 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/devenock/d_weaver/config"
+	"github.com/devenock/d_weaver/docs"
 	"github.com/devenock/d_weaver/internal/auth/handler"
 	"github.com/devenock/d_weaver/internal/auth/jwt"
 	authrepo "github.com/devenock/d_weaver/internal/auth/repository"
 	authsvc "github.com/devenock/d_weaver/internal/auth/service"
-	"github.com/devenock/d_weaver/config"
-	"github.com/devenock/d_weaver/pkg/database"
-	"github.com/devenock/d_weaver/docs"
+	diagramhandler "github.com/devenock/d_weaver/internal/diagram/handler"
+	diagramrepo "github.com/devenock/d_weaver/internal/diagram/repository"
+	diagramsvc "github.com/devenock/d_weaver/internal/diagram/service"
 	workspacehandler "github.com/devenock/d_weaver/internal/workspace/handler"
 	workspacerepo "github.com/devenock/d_weaver/internal/workspace/repository"
 	workspacesvc "github.com/devenock/d_weaver/internal/workspace/service"
+	"github.com/devenock/d_weaver/pkg/database"
 	"github.com/gin-gonic/gin"
 )
 
@@ -42,6 +45,11 @@ func New(cfg *config.Config) (*App, error) {
 	// Swagger/OpenAPI per module (AGENTS: document each module)
 	r.GET("/api-docs/auth", docs.ServeAuth)
 	r.GET("/api-docs/workspace", docs.ServeWorkspace)
+	r.GET("/api-docs/diagram", docs.ServeDiagram)
+	// Serve uploaded diagram images (PDF: 10MB limit enforced on upload)
+	if cfg.Upload.Dir != "" {
+		r.Static("/uploads", cfg.Upload.Dir)
+	}
 
 	// API v1 group (PDF: /api/v1)
 	v1 := r.Group("/api/v1")
@@ -63,6 +71,11 @@ func New(cfg *config.Config) (*App, error) {
 	workspaceSvc := workspacesvc.New(workspaceRepo)
 	workspaceHandler := workspacehandler.New(workspaceSvc, jwtIssuer)
 	workspaceHandler.Register(v1)
+
+	diagramRepo := diagramrepo.New(pool)
+	diagramSvc := diagramsvc.New(diagramRepo, workspaceRepo)
+	diagramHandler := diagramhandler.New(diagramSvc, jwtIssuer, cfg.Upload)
+	diagramHandler.Register(v1)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{

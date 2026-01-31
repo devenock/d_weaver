@@ -15,6 +15,13 @@ type Config struct {
 	JWT       JWTConfig       `mapstructure:"jwt"`
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
 	CORS      CORSConfig      `mapstructure:"cors"`
+	Upload    UploadConfig    `mapstructure:"upload"`
+}
+
+// UploadConfig for diagram image uploads (PDF: 10MB limit, type checks).
+type UploadConfig struct {
+	Dir      string // directory to store files (default "uploads")
+	MaxBytes int    // max file size in bytes (default 10MB)
 }
 
 type ServerConfig struct {
@@ -83,6 +90,8 @@ func Load() (*Config, error) {
 	v.SetDefault("cors.allowed_origins", []string{"*"})
 	v.SetDefault("cors.allowed_methods", []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
 	v.SetDefault("cors.allowed_headers", []string{"Authorization", "Content-Type", "X-Request-ID"})
+	v.SetDefault("upload.dir", "uploads")
+	v.SetDefault("upload.max_bytes", 10*1024*1024) // 10MB
 
 	v.SetConfigName("config")
 	v.SetConfigType("yaml")
