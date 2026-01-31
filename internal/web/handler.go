@@ -10,6 +10,8 @@ import (
 
 	"github.com/devenock/d_weaver/internal/auth/jwt"
 	authsvc "github.com/devenock/d_weaver/internal/auth/service"
+	diagrammodel "github.com/devenock/d_weaver/internal/diagram/model"
+	workspacemodel "github.com/devenock/d_weaver/internal/workspace/model"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -26,16 +28,29 @@ type AuthService interface {
 	Register(ctx context.Context, email, password string) (*authsvc.RegisterResult, error)
 }
 
+// WorkspaceLister lists workspaces for the current user (for dashboard partials).
+type WorkspaceLister interface {
+	ListWorkspaces(ctx context.Context, userID uuid.UUID) ([]workspacemodel.WorkspaceResponse, error)
+}
+
+// DiagramLister lists diagrams for the current user (for dashboard partials).
+type DiagramLister interface {
+	ListDiagrams(ctx context.Context, userID uuid.UUID) ([]diagrammodel.DiagramResponse, error)
+}
+
 // Handler serves the htmx static frontend and cookie-based auth.
 type Handler struct {
 	authSvc       AuthService
 	issuer        *jwt.Issuer
 	staticDir     string
 	accessMinutes int
+	wsLister      WorkspaceLister
+	diagLister    DiagramLister
 }
 
 // New returns a web handler that serves static pages and form login/signup/logout.
-func New(authSvc AuthService, issuer *jwt.Issuer, staticDir string, accessMinutes int) *Handler {
+// wsLister and diagLister are optional; when set, dashboard partials (workspaces/diagrams) are enabled.
+func New(authSvc AuthService, issuer *jwt.Issuer, staticDir string, accessMinutes int, wsLister WorkspaceLister, diagLister DiagramLister) *Handler {
 	if accessMinutes <= 0 {
 		accessMinutes = 15
 	}
@@ -44,6 +59,8 @@ func New(authSvc AuthService, issuer *jwt.Issuer, staticDir string, accessMinute
 		issuer:        issuer,
 		staticDir:     strings.TrimSuffix(staticDir, "/"),
 		accessMinutes: accessMinutes,
+		wsLister:      wsLister,
+		diagLister:    diagLister,
 	}
 }
 
@@ -65,6 +82,10 @@ func (h *Handler) Register(r *gin.Engine) {
 	grp.GET("/editor", h.servePage("editor.html"))
 	grp.GET("/whiteboard", h.servePage("whiteboard.html"))
 	grp.GET("/dashboard", h.requireAuthCookie(h.serveDashboard))
+	if h.wsLister != nil && h.diagLister != nil {
+		grp.GET("/dashboard/partials/workspaces", h.requireAuthCookie(h.serveWorkspacesPartial))
+		grp.GET("/dashboard/partials/diagrams", h.requireAuthCookie(h.serveDiagramsPartial))
+	}
 	grp.POST("/login", h.handleLogin)
 	grp.POST("/signup", h.handleSignup)
 	grp.POST("/logout", h.handleLogout)
@@ -254,3 +275,115 @@ func GetUserID(c *gin.Context) uuid.UUID {
 	id, _ := v.(uuid.UUID)
 	return id
 }
+
+func (h *Handler) getUserID(c *gin.Context) uuid.UUID {
+	v, _ := c.Get("user_id")
+	id, _ := v.(uuid.UUID)
+	return id
+}
+
+// serveWorkspacesPartial returns HTML fragment of workspace list for dashboard sidebar.
+func (h *Handler) serveWorkspacesPartial(c *gin.Context) {
+	userID := h.getUserID(c)
+	list, err := h.wsLister.ListWorkspaces(c.Request.Context(), userID)
+	if err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	tpl := template.Must(template.New("workspaces").Parse(partialWorkspacesHTML))
+	var b strings.Builder
+	if err := tpl.Execute(&b, map[string]interface{}{"Workspaces": list}); err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(b.String()))
+}
+
+// serveDiagramsPartial returns HTML fragment of diagram cards for dashboard main.
+func (h *Handler) serveDiagramsPartial(c *gin.Context) {
+	userID := h.getUserID(c)
+	list, err := h.diagLister.ListDiagrams(c.Request.Context(), userID)
+	if err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	// Sort by updated_at desc (recent first)
+	type diagramWithTime struct {
+		diagrammodel.DiagramResponse
+		UpdatedAtFormatted string
+		EditorURL          string
+	}
+	items := make([]diagramWithTime, len(list))
+	for i := range list {
+		items[i] = diagramWithTime{
+			DiagramResponse:    list[i],
+			UpdatedAtFormatted: list[i].UpdatedAt.Format("Jan 2, 2006"),
+			EditorURL:          "/editor?id=" + list[i].ID.String(),
+		}
+		if list[i].DiagramType == "whiteboard" {
+			items[i].EditorURL = "/whiteboard?id=" + list[i].ID.String()
+		}
+	}
+	tpl := template.Must(template.New("diagrams").Funcs(template.FuncMap{
+		"safeURL": func(s interface{}) string {
+			if s == nil {
+				return ""
+			}
+			switch v := s.(type) {
+			case *string:
+				if v == nil {
+					return ""
+				}
+				return *v
+			case string:
+				return v
+			default:
+				return ""
+			}
+		},
+	}).Parse(partialDiagramsHTML))
+	var b strings.Builder
+	if err := tpl.Execute(&b, map[string]interface{}{"Diagrams": items}); err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(b.String()))
+}
+
+const partialWorkspacesHTML = `
+<div id="dashboard-workspaces" class="space-y-1">
+  <p class="text-xs font-medium text-muted-foreground mb-2">Workspaces</p>
+  {{range .Workspaces}}
+  <a href="/dashboard?workspace={{.ID}}" class="block rounded-lg border border-border bg-card px-3 py-2 text-sm hover:bg-muted/50" style="text-decoration:none;color:inherit;">
+    <span class="font-medium">{{.Name}}</span>
+  </a>
+  {{else}}
+  <p class="text-sm text-muted-foreground">No workspaces yet.</p>
+  {{end}}
+</div>
+`
+
+const partialDiagramsHTML = `
+<div id="dashboard-diagrams" class="grid gap-4" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem;">
+  {{range .Diagrams}}
+  <a href="{{.EditorURL}}" class="rounded-xl border border-border bg-card p-4 shadow-sm hover:shadow-md transition-shadow block" style="text-decoration:none;color:inherit;">
+    <div class="flex items-start justify-between gap-2">
+      <h3 class="font-semibold text-base truncate flex-1" style="min-width:0;">{{.Title}}</h3>
+    </div>
+    <p class="text-xs text-muted-foreground mt-1">{{.DiagramType}} • {{.UpdatedAtFormatted}}</p>
+    <div class="mt-3 rounded-md bg-muted/50 h-24 flex items-center justify-center overflow-hidden" style="min-height:6rem;">
+      {{if .ImageURL}}
+      <img src="{{safeURL .ImageURL}}" alt="{{.Title}}" class="max-w-full max-h-full object-contain" />
+      {{else}}
+      <span class="text-xs text-muted-foreground">No preview</span>
+      {{end}}
+    </div>
+  </a>
+  {{else}}
+  <div class="col-span-full rounded-xl border border-dashed border-border bg-card p-8 text-center" style="grid-column:1/-1;">
+    <p class="text-muted-foreground mb-4">No diagrams yet. Create your first one!</p>
+    <a href="/editor" class="btn btn-primary">New Diagram</a>
+  </div>
+  {{end}}
+</div>
+`

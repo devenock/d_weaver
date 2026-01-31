@@ -150,9 +150,9 @@ func New(cfg *config.Config, log pkglogger.Logger) (*App, error) {
 	realtimeHandler := realtime.NewHandler(realtimeHub, jwtIssuer, diagramSvc)
 	r.GET("/ws/collaboration/:diagramId", realtimeHandler.ServeWS)
 
-	// htmx static frontend and cookie-based auth (Phase 1)
+	// htmx static frontend and cookie-based auth (Phase 1+2)
 	if cfg.Web.StaticDir != "" {
-		webHandler := web.New(authSvc, jwtIssuer, cfg.Web.StaticDir, cfg.JWT.AccessDurationMinutes)
+		webHandler := web.New(authSvc, jwtIssuer, cfg.Web.StaticDir, cfg.JWT.AccessDurationMinutes, workspaceSvc, diagramSvc)
 		webHandler.Register(r)
 	}
 

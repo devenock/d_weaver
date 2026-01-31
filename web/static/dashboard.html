@@ -30,14 +30,35 @@
     </div>
   </nav>
 
-  <main class="container mx-auto px-4 py-8" style="max-width: 80rem;">
-    <h1 class="text-3xl font-bold mb-6">Dashboard</h1>
-    <p class="text-muted-foreground mb-6" style="color: hsl(var(--muted-foreground));">Your diagrams and workspaces. (Phase 1 placeholder – full list in Phase 2.)</p>
-    <div class="rounded-xl border border-border bg-card p-6 shadow-sm" style="border-radius: 0.75rem; background-color: hsl(var(--card)); padding: 1.5rem;">
-      <p class="text-sm text-muted-foreground" style="color: hsl(var(--muted-foreground));">Diagrams and whiteboards will load here via htmx in Phase 2.</p>
-      <a href="/editor" class="btn btn-primary mt-4">New diagram</a>
-      <a href="/whiteboard" class="btn btn-outline mt-4">New whiteboard</a>
-    </div>
-  </main>
+  <div class="flex w-full min-h-[calc(100vh-4rem)]" style="display: flex; min-height: calc(100vh - 4rem);">
+    <!-- Sidebar -->
+    <aside class="w-64 border-r border-border bg-card flex-shrink-0 p-4 hidden md:block" style="width: 16rem; border-right: 1px solid hsl(var(--border)); background-color: hsl(var(--card)); padding: 1rem;">
+      <div class="space-y-4">
+        <div>
+          <p class="text-xs font-medium text-muted-foreground mb-2">Create</p>
+          <a href="/editor" class="btn btn-primary btn-sm w-full mb-2">New Diagram</a>
+          <a href="/whiteboard" class="btn btn-outline btn-sm w-full">New Whiteboard</a>
+        </div>
+        <div id="sidebar-workspaces" hx-get="/dashboard/partials/workspaces" hx-trigger="load" hx-swap="innerHTML">
+          <p class="text-sm text-muted-foreground">Loading workspaces…</p>
+        </div>
+      </div>
+    </aside>
+
+    <!-- Main content -->
+    <main class="flex-1 p-6 overflow-auto" style="flex: 1; padding: 1.5rem;">
+      <div class="flex items-center justify-between mb-6">
+        <div>
+          <h1 class="text-2xl font-bold">Your Diagrams</h1>
+          <p class="text-muted-foreground text-sm" style="color: hsl(var(--muted-foreground));">Create, manage, and share your diagrams</p>
+        </div>
+        <a href="/editor" class="btn btn-primary gap-2">+ New Diagram</a>
+      </div>
+
+      <div id="dashboard-diagrams-container" hx-get="/dashboard/partials/diagrams" hx-trigger="load" hx-swap="innerHTML">
+        <p class="text-muted-foreground">Loading diagrams…</p>
+      </div>
+    </main>
+  </div>
 </body>
 </html>

@@ -13,6 +13,14 @@ This directory contains the htmx-based static frontend for DWeaver. It is served
 - **404** – unhandled GETs serve `404.html`
 - **Auth redirect** – `/auth` redirects to `/login?redirect=/dashboard`
 
+## Phase 2 scope (dashboard list)
+
+- **Dashboard** – sidebar (workspaces list + New Diagram / New Whiteboard) and main content (Your Diagrams grid).
+- **Partials** (htmx, same-origin cookie):
+  - `GET /dashboard/partials/workspaces` – HTML fragment of workspace list for sidebar.
+  - `GET /dashboard/partials/diagrams` – HTML fragment of diagram cards (title, type, updated_at, preview, link to editor/whiteboard).
+- **API cookie auth** – `RequireAuth` middleware accepts `access_token` cookie when `Authorization: Bearer` is missing (same-origin). So the API can be called with credentials from the htmx app.
+
 ## Cookie-based auth
 
 - **POST /login** – body: `email`, `password`, `redirect` (optional). On success: sets `access_token` (httpOnly cookie) and redirects to `redirect` or `/dashboard`.
@@ -38,7 +46,6 @@ Then open http://localhost:8200/ (or your configured host/port). The same server
 
 ## Later phases
 
-- **Phase 2**: Dashboard list (diagrams/workspaces) via htmx + API
 - **Phase 3**: Editor page with Mermaid island
 - **Phase 4**: Whiteboard as embedded JS app
 - **Phase 5**: Real-time collaboration (JS + WebSocket)

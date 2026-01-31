@@ -15,29 +15,31 @@ type contextKey string
 const UserIDKey contextKey = "user_id"
 const UserEmailKey contextKey = "user_email"
 
-// RequireAuth validates the Bearer token and sets user ID and email in context.
+// CookieName is the name of the httpOnly cookie used for web session (same as web handler).
+const CookieName = "access_token"
+
+// RequireAuth validates the Bearer token (or access_token cookie when same-origin) and sets user ID and email in context.
 // Responds 401 if missing or invalid.
 func RequireAuth(issuer *jwt.Issuer) gin.HandlerFunc {
 	return func(c *gin.Context) {
+		tokenString := ""
 		auth := c.GetHeader("Authorization")
-		if auth == "" {
+		if strings.HasPrefix(auth, "Bearer ") {
+			tokenString = strings.TrimPrefix(auth, "Bearer ")
+		}
+		if tokenString == "" {
+			if cookie, err := c.Cookie(CookieName); err == nil && cookie != "" {
+				tokenString = cookie
+			}
+		}
+		if tokenString == "" {
 			common.WriteError(c, http.StatusUnauthorized, common.ErrorBody{
 				Code:    common.CodeUnauthorized,
-				Message: "Missing or invalid authorization header.",
+				Message: "Missing or invalid authorization.",
 			})
 			c.Abort()
 			return
 		}
-		const prefix = "Bearer "
-		if !strings.HasPrefix(auth, prefix) {
-			common.WriteError(c, http.StatusUnauthorized, common.ErrorBody{
-				Code:    common.CodeUnauthorized,
-				Message: "Missing or invalid authorization header.",
-			})
-			c.Abort()
-			return
-		}
-		tokenString := strings.TrimPrefix(auth, prefix)
 		userID, email, err := issuer.ValidateAccessToken(tokenString)
 		if err != nil {
 			common.WriteError(c, http.StatusUnauthorized, common.ErrorBody{
