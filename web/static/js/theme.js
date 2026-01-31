@@ -31,7 +31,8 @@
       btn.textContent = cur === 'dark' ? '☀ Light' : (cur === 'light' ? '🌙 Dark' : '🌓 ' + (document.documentElement.classList.contains('dark') ? 'Light' : 'Dark'));
     });
   }
-  apply(getPreferred() || 'system');
+  /* Default to dark theme when no preference (matches React experience) */
+  apply(getPreferred() || 'dark');
   if (document.readyState === 'loading') document.addEventListener('DOMContentLoaded', updateButtons);
   else updateButtons();
   document.addEventListener('click', function(e) {
@@ -40,4 +41,9 @@
   if (window.matchMedia) window.matchMedia('(prefers-color-scheme: dark)').addEventListener('change', function() {
     if (getPreferred() === 'system' || !getPreferred()) apply('system');
   });
+  /* Prevent flash: set dark class before paint when no preference */
+  (function() {
+    if (getPreferred()) return;
+    document.documentElement.classList.add('dark');
+  })();
 })();

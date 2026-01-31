@@ -4,42 +4,43 @@
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Sign in – DiagramGen</title>
+  <script>(function(){try{if(!localStorage.getItem('theme'))document.documentElement.classList.add('dark');}catch(e){}})();</script>
   <link rel="stylesheet" href="/static/css/site.css" />
   <script src="/static/js/theme.js"></script>
   <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
 </head>
 <body class="min-h-screen bg-background">
-  <div class="grid min-h-screen lg:grid-cols-2" style="display: grid; min-height: 100vh; grid-template-columns: 1fr 1fr;">
-    <!-- Left panel (AuthShell marketing) -->
-    <div class="relative hidden overflow-hidden border-r border-border lg:flex" style="display: none;">
-      <div class="absolute inset-0 bg-primary/25 bg-background bg-muted/40" style="background: linear-gradient(to bottom right, hsl(var(--primary) / 0.25), hsl(var(--background)), hsl(var(--muted) / 0.4));"></div>
-      <div class="relative flex w-full flex-col p-10">
-        <a href="/" class="inline-flex items-center gap-2 text-lg font-semibold tracking-tight" style="display: inline-flex; gap: 0.5rem;">
+  <div class="auth-layout">
+    <!-- Left panel (AuthShell marketing) – visible on lg -->
+    <div class="auth-panel-left relative bg-muted/30">
+      <div class="absolute inset-0 bg-primary/5 pointer-events-none" style="background: linear-gradient(135deg, hsl(var(--primary) / 0.08), transparent 50%);"></div>
+      <div class="relative flex flex-col w-full p-10">
+        <a href="/" class="inline-flex items-center gap-2 text-lg font-semibold tracking-tight" style="text-decoration: none; color: inherit;">
           <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">✨</span>
-          <span class="bg-clip-text text-transparent" style="background: linear-gradient(to right, hsl(var(--primary)), hsl(var(--primary) / 0.7)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">DiagramGen</span>
+          <span class="text-primary" style="background: linear-gradient(to right, hsl(var(--primary)), hsl(var(--primary) / 0.8)); -webkit-background-clip: text; -webkit-text-fill-color: transparent; background-clip: text;">DiagramGen</span>
         </a>
         <div class="mt-16 space-y-6">
           <h2 class="text-4xl font-semibold leading-tight tracking-tight">Welcome back.</h2>
-          <p class="max-w-xl text-base leading-relaxed text-muted-foreground" style="color: hsl(var(--muted-foreground)); max-width: 36rem;">Pick up where you left off—manage diagrams, workspaces, and exports from your dashboard.</p>
-          <div class="mt-8 grid gap-3 text-sm">
-            <div class="flex items-start gap-3"><span class="text-primary">✓</span> <span class="text-muted-foreground" style="color: hsl(var(--muted-foreground));">Clean defaults with a modern, consistent design system.</span></div>
-            <div class="flex items-start gap-3"><span class="text-primary">✓</span> <span class="text-muted-foreground" style="color: hsl(var(--muted-foreground));">Workspaces and sharing built around real collaboration.</span></div>
-            <div class="flex items-start gap-3"><span class="text-primary">✓</span> <span class="text-muted-foreground" style="color: hsl(var(--muted-foreground));">Export-ready diagrams (PNG/SVG/PDF) when you need them.</span></div>
+          <p class="max-w-xl text-base leading-relaxed text-muted-foreground">Pick up where you left off—manage diagrams, workspaces, and exports from your dashboard.</p>
+          <div class="mt-8 space-y-3 text-sm">
+            <div class="flex items-start gap-3"><span class="text-primary">✓</span> <span class="text-muted-foreground">Clean defaults with a modern, consistent design system.</span></div>
+            <div class="flex items-start gap-3"><span class="text-primary">✓</span> <span class="text-muted-foreground">Workspaces and sharing built around real collaboration.</span></div>
+            <div class="flex items-start gap-3"><span class="text-primary">✓</span> <span class="text-muted-foreground">Export-ready diagrams (PNG/SVG/PDF) when you need them.</span></div>
           </div>
         </div>
-        <div class="mt-auto pt-10 text-xs text-muted-foreground" style="color: hsl(var(--muted-foreground));">© 2024 DiagramGen</div>
+        <div class="mt-auto pt-10 text-xs text-muted-foreground">© 2024 DiagramGen</div>
       </div>
     </div>
 
     <!-- Right panel: form -->
-    <div class="flex flex-col" style="display: flex; flex-direction: column;">
+    <div class="auth-panel-right">
       <div class="flex items-center justify-between px-4 py-4 lg:px-10">
-        <a href="/" class="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground" style="color: hsl(var(--muted-foreground));">← Back to home</a>
+        <a href="/" class="text-sm text-muted-foreground" style="text-decoration: none;">← Back to home</a>
         <button type="button" class="theme-toggle btn btn-ghost btn-sm" aria-label="Toggle theme"></button>
       </div>
       <div class="flex flex-1 items-center justify-center px-4 pb-12 pt-6 lg:px-10">
-        <div class="w-full max-w-[440px]">
-          <div class="rounded-2xl border border-border bg-background/70 p-6 shadow-sm sm:p-8" style="border-radius: 1rem; background-color: hsl(var(--background) / 0.7); padding: 1.5rem;">
+        <div class="auth-form-wrap w-full">
+          <div class="auth-form-card rounded-2xl bg-card">
             <div class="space-y-2">
               <h1 class="text-2xl font-semibold tracking-tight">Sign in</h1>
               <p class="text-sm text-muted-foreground" style="color: hsl(var(--muted-foreground));">Continue to your workspace and keep building.</p>
@@ -62,7 +63,7 @@
             </form>
             <p class="mt-2 text-center text-sm"><a href="/forgot-password" class="link-primary">Forgot password?</a></p>
 
-            <div class="mt-6 text-center text-sm text-muted-foreground" style="color: hsl(var(--muted-foreground));">
+            <div class="mt-6 text-center text-sm text-muted-foreground">
               Don't have an account? <a href="/signup" class="link-primary font-medium">Create one</a>
             </div>
           </div>
