@@ -21,12 +21,16 @@ import (
 	diagramhandler "github.com/devenock/d_weaver/internal/diagram/handler"
 	diagramrepo "github.com/devenock/d_weaver/internal/diagram/repository"
 	diagramsvc "github.com/devenock/d_weaver/internal/diagram/service"
+	"github.com/devenock/d_weaver/internal/middleware"
 	"github.com/devenock/d_weaver/internal/realtime"
 	workspacehandler "github.com/devenock/d_weaver/internal/workspace/handler"
 	workspacerepo "github.com/devenock/d_weaver/internal/workspace/repository"
 	workspacesvc "github.com/devenock/d_weaver/internal/workspace/service"
 	"github.com/devenock/d_weaver/pkg/database"
+	pkglogger "github.com/devenock/d_weaver/pkg/logger"
 	"github.com/gin-gonic/gin"
+	"github.com/gin-contrib/cors"
+	"github.com/redis/go-redis/v9"
 )
 
 // App holds router, server, and dependencies for bootstrap and graceful shutdown.
@@ -34,14 +38,33 @@ type App struct {
 	Router *gin.Engine
 	Server *http.Server
 	Config *config.Config
+	Log    pkglogger.Logger
 }
 
 // New builds the Gin engine, binds routes and middleware, and returns App and Server.
-// Requires cfg.DB.URL and JWT config (PrivateKeyPath or RefreshTokenSecret for dev).
-func New(cfg *config.Config) (*App, error) {
+// log may be nil to skip request logging. Requires cfg.DB.URL and JWT config (PrivateKeyPath or RefreshTokenSecret for dev).
+func New(cfg *config.Config, log pkglogger.Logger) (*App, error) {
 	gin.SetMode(gin.ReleaseMode)
 	r := gin.New()
 	r.Use(gin.Recovery())
+
+	// CORS (from config)
+	corsConfig := cors.Config{
+		AllowOrigins:     cfg.CORS.AllowedOrigins,
+		AllowMethods:     cfg.CORS.AllowedMethods,
+		AllowHeaders:     cfg.CORS.AllowedHeaders,
+		AllowCredentials: false,
+		ExposeHeaders:    []string{"X-Request-ID"},
+	}
+	r.Use(cors.New(corsConfig))
+
+	// Request ID + optional request logging
+	r.Use(middleware.RequestLog(log))
+
+	// Ensure upload directory exists
+	if cfg.Upload.Dir != "" {
+		_ = os.MkdirAll(cfg.Upload.Dir, 0755)
+	}
 
 	// Health and readiness (PDF: /health and /ready)
 	r.GET("/health", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ok"}) })
@@ -57,9 +80,6 @@ func New(cfg *config.Config) (*App, error) {
 		r.Static("/uploads", cfg.Upload.Dir)
 	}
 
-	// API v1 group (PDF: /api/v1)
-	v1 := r.Group("/api/v1")
-
 	pool, err := db.Pool(context.Background(), cfg)
 	if err != nil {
 		return nil, fmt.Errorf("app: db: %w", err)
@@ -68,6 +88,26 @@ func New(cfg *config.Config) (*App, error) {
 	if err != nil {
 		return nil, fmt.Errorf("app: jwt: %w", err)
 	}
+
+	// Rate limiting: Redis-backed when Redis.URL set, else in-memory
+	var limiter middleware.Limiter
+	if cfg.Redis.URL != "" && cfg.RateLimit.Enabled {
+		ropts, err := redis.ParseURL(cfg.Redis.URL)
+		if err == nil {
+			rdb := redis.NewClient(ropts)
+			store := middleware.NewRedisStore(rdb)
+			limiter = middleware.NewRedisLimiter(store, cfg.RateLimit.RequestsPerMinute, time.Minute)
+		} else {
+			limiter = middleware.NewMemoryLimiter(cfg.RateLimit.RequestsPerMinute, time.Minute)
+		}
+	} else {
+		limiter = middleware.NewMemoryLimiter(cfg.RateLimit.RequestsPerMinute, time.Minute)
+	}
+	r.Use(middleware.RateLimit(limiter, jwtIssuer, cfg.RateLimit.RequestsPerMinute, cfg.RateLimit.Enabled))
+
+	// API v1 group (PDF: /api/v1)
+	v1 := r.Group("/api/v1")
+
 	authRepo := authrepo.New(pool)
 	authSvc := authsvc.New(authRepo, jwtIssuer, cfg.JWT.AccessDurationMinutes, cfg.JWT.RefreshDurationDays)
 	authHandler := handler.New(authSvc)
@@ -100,15 +140,22 @@ func New(cfg *config.Config) (*App, error) {
 		WriteTimeout: time.Duration(cfg.Server.WriteTimeout) * time.Second,
 	}
 
-	return &App{Router: r, Server: srv, Config: cfg}, nil
+	return &App{Router: r, Server: srv, Config: cfg, Log: log}, nil
 }
 
 // Run starts the HTTP server and blocks until SIGTERM/SIGINT, then shuts down gracefully.
 func (a *App) Run() error {
+	addr := a.Server.Addr
+	if a.Log != nil {
+		a.Log.Info().Str("addr", addr).Msg("server starting")
+	}
 	go func() {
 		if err := a.Server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			// logger here when wired
-			_, _ = os.Stderr.WriteString("server: " + err.Error() + "\n")
+			if a.Log != nil {
+				a.Log.Error().Err(err).Msg("server error")
+			} else {
+				_, _ = os.Stderr.WriteString("server: " + err.Error() + "\n")
+			}
 		}
 	}()
 
@@ -116,6 +163,9 @@ func (a *App) Run() error {
 	signal.Notify(quit, syscall.SIGTERM, syscall.SIGINT)
 	<-quit
 
+	if a.Log != nil {
+		a.Log.Info().Msg("shutting down")
+	}
 	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 	defer cancel()
 	if err := a.Server.Shutdown(ctx); err != nil {

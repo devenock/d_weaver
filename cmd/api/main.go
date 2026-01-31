@@ -4,8 +4,9 @@ import (
 	"log"
 	"os"
 
-	"github.com/devenock/d_weaver/internal/app"
 	"github.com/devenock/d_weaver/config"
+	"github.com/devenock/d_weaver/internal/app"
+	"github.com/devenock/d_weaver/pkg/logger"
 )
 
 func main() {
@@ -14,7 +15,14 @@ func main() {
 		log.Fatalf("config: %v", err)
 	}
 
-	a, err := app.New(cfg)
+	level := "info"
+	if cfg.Log.Level != "" {
+		level = cfg.Log.Level
+	}
+	appLog := logger.New(level, os.Stdout)
+	logger.Global(appLog)
+
+	a, err := app.New(cfg, appLog)
 	if err != nil {
 		log.Fatalf("app: %v", err)
 	}

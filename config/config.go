@@ -17,6 +17,12 @@ type Config struct {
 	CORS      CORSConfig      `mapstructure:"cors"`
 	Upload    UploadConfig    `mapstructure:"upload"`
 	AI        AIConfig        `mapstructure:"ai"`
+	Log       LogConfig       `mapstructure:"log"`
+}
+
+// LogConfig for application logging.
+type LogConfig struct {
+	Level string `mapstructure:"level"` // debug, info, warn, error (default info)
 }
 
 // AIConfig for generate-diagram (OpenAI-compatible chat endpoint).
@@ -63,8 +69,8 @@ type JWTConfig struct {
 }
 
 type RateLimitConfig struct {
-	RequestsPerMinute int
-	Enabled           bool
+	RequestsPerMinute int  `mapstructure:"requests_per_minute"`
+	Enabled           bool `mapstructure:"enabled"`
 }
 
 type CORSConfig struct {
@@ -102,6 +108,7 @@ func Load() (*Config, error) {
 	v.SetDefault("upload.max_bytes", 10*1024*1024) // 10MB
 	v.SetDefault("ai.base_url", "https://ai.gateway.lovable.dev/v1")
 	v.SetDefault("ai.model", "google/gemini-2.5-flash")
+	v.SetDefault("log.level", "info")
 
 	v.SetConfigName("config")
 	v.SetConfigType("yaml")
