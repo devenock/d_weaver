@@ -54,7 +54,19 @@ Then open http://localhost:8200/ (or your configured host/port). The same server
   - Save: `POST /api/v1/diagrams` (new) or `PUT /api/v1/diagrams/:id` (update), with cookie. Diagram type derived from first line of content.
   - Export SVG/PNG and Copy from the preview SVG.
 
+## Phase 4 scope (whiteboard as JS island)
+
+- **Whiteboard** (`/whiteboard`) – protected (auth cookie). Full canvas editor:
+  - **Fabric.js** (v5 from cdnjs) + **jsPDF** (CDN) for PDF export.
+  - Toolbar: Undo, Redo, Select, Draw, Eraser, Rectangle, Circle, Line, Triangle, Text, color picker, Clear.
+  - Canvas 1200×700, drag-and-drop images onto canvas.
+  - Load: `?id=` or `?diagramId=` → `GET /api/v1/diagrams/:id` (with cookie); `content` = JSON → `canvas.loadFromJSON`.
+  - Save: `POST /api/v1/diagrams` or `PUT /api/v1/diagrams/:id` with `content: JSON.stringify(canvas.toJSON())`, `diagram_type: "whiteboard"`.
+  - Export PNG/PDF from canvas (bounding box of objects).
+  - Undo/redo via history array of canvas JSON states.
+
+Note: Whiteboards created in the React app (Fabric 7) may have slightly different JSON; loading in this page (Fabric 5) should work for basic shapes. For full parity, consider upgrading to Fabric 7 when a browser build is available.
+
 ## Later phases
 
-- **Phase 4**: Whiteboard as embedded JS app
 - **Phase 5**: Real-time collaboration (JS + WebSocket)

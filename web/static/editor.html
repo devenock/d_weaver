@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Editor – DiagramGen</title>
   <link rel="stylesheet" href="/static/css/site.css" />
+  <script src="/static/js/theme.js"></script>
   <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
   <script src="https://cdn.jsdelivr.net/npm/mermaid@11/dist/mermaid.min.js" defer></script>
 </head>
@@ -13,6 +14,7 @@
     <div class="w-full px-4 h-16 flex items-center justify-between">
       <a href="/" class="text-xl font-bold bg-clip-text text-transparent" style="background: linear-gradient(to right, hsl(var(--primary)), hsl(var(--primary) / 0.8)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">DiagramGen</a>
       <div class="flex items-center gap-4">
+        <button type="button" class="theme-toggle btn btn-ghost btn-sm" aria-label="Toggle theme"></button>
         <a href="/dashboard" class="btn btn-ghost btn-sm">Dashboard</a>
       </div>
     </div>
@@ -23,12 +25,23 @@
     <div class="flex flex-col sm:flex-row gap-4 mb-6">
       <input type="text" id="diagram-title" class="flex-1 text-lg font-medium h-12 border-0 shadow-none px-0 bg-transparent focus:outline-none focus:ring-0" placeholder="Diagram title..." value="Untitled Diagram" style="border: none; background: transparent;" />
       <div class="flex items-center gap-2 flex-wrap">
+        <button type="button" id="btn-ai" class="btn btn-outline btn-sm">AI Generate</button>
+        <button type="button" id="btn-share" class="btn btn-outline btn-sm" title="Make public and copy link">Share</button>
         <button type="button" id="btn-save" class="btn btn-primary btn-sm">Save</button>
         <button type="button" id="btn-export-svg" class="btn btn-outline btn-sm">Export SVG</button>
         <button type="button" id="btn-export-png" class="btn btn-outline btn-sm">Export PNG</button>
         <button type="button" id="btn-copy" class="btn btn-outline btn-sm">Copy</button>
       </div>
     </div>
+
+    <!-- AI Generate panel (collapsible) -->
+    <details class="mb-4 rounded-xl border border-border bg-card p-4 shadow-sm">
+      <summary class="cursor-pointer font-medium text-sm">AI Generate diagram</summary>
+      <div class="mt-3 flex gap-2">
+        <input type="text" id="ai-description" placeholder="Describe the diagram (e.g. user login flow)" class="flex-1 rounded border border-border bg-background px-3 py-2 text-sm" style="min-width: 12rem;" />
+        <button type="button" id="btn-ai-generate" class="btn btn-primary btn-sm">Generate</button>
+      </div>
+    </details>
 
     <!-- Diagram type + split layout -->
     <div class="flex gap-4 mb-4">
@@ -66,6 +79,21 @@
     </div>
 
     <p id="editor-error" class="hidden mt-4 alert-error" role="alert"></p>
+
+    <!-- Presence (when diagram is saved, WebSocket island) -->
+    <div id="presence-panel" class="hidden mt-2 text-sm text-muted-foreground" aria-live="polite">
+      <span id="presence-text">Connecting…</span>
+    </div>
+
+    <!-- Comments (when diagram is saved) -->
+    <details id="comments-panel" class="mt-6 rounded-xl border border-border bg-card p-4 shadow-sm hidden" data-diagram-id="">
+      <summary class="cursor-pointer font-medium text-sm">Comments</summary>
+      <div id="comments-list" class="mt-3 space-y-2 max-h-48 overflow-y-auto text-sm"></div>
+      <div class="mt-3 flex gap-2">
+        <input type="text" id="comment-text" placeholder="Add a comment..." class="flex-1 rounded border border-border bg-background px-3 py-2 text-sm" />
+        <button type="button" id="btn-add-comment" class="btn btn-primary btn-sm">Add</button>
+      </div>
+    </details>
   </main>
 
   <script>
@@ -145,6 +173,8 @@
           if (opts[i].value === t) { typeEl.selectedIndex = i; break; }
         }
         debounceRender();
+        showCommentsPanel(d.id);
+        connectPresence(d.id);
       })
       .catch(function() { showError('Could not load diagram.'); });
   }
@@ -173,8 +203,74 @@
         showError('');
         if (window.history && window.history.replaceState)
           window.history.replaceState({}, '', '/editor?id=' + (d.id || currentId));
+        if (d.id) { uploadDiagramImage(d.id); showCommentsPanel(d.id); connectPresence(d.id); }
       })
       .catch(function(e) { showError(e.message || 'Save failed'); });
+  });
+
+  function uploadDiagramImage(id) {
+    var svg = outputEl.querySelector('svg');
+    if (!svg) return;
+    var svgData = new XMLSerializer().serializeToString(svg);
+    var img = new Image();
+    img.onload = function() {
+      var canvas = document.createElement('canvas');
+      var bbox = svg.getBBox();
+      canvas.width = bbox.width * 2;
+      canvas.height = bbox.height * 2;
+      var ctx = canvas.getContext('2d');
+      ctx.fillStyle = 'white';
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.scale(2, 2);
+      ctx.drawImage(img, 0, 0);
+      canvas.toBlob(function(blob) {
+        if (!blob) return;
+        var fd = new FormData();
+        fd.append('file', blob, 'preview.png');
+        fetch(API + '/diagrams/' + id + '/image', { method: 'POST', credentials: 'include', body: fd }).catch(function() {});
+      }, 'image/png');
+    };
+    img.src = 'data:image/svg+xml;base64,' + btoa(unescape(encodeURIComponent(svgData)));
+  }
+
+  var commentsPanel = document.getElementById('comments-panel');
+  var commentsList = document.getElementById('comments-list');
+  function showCommentsPanel(id) {
+    if (!id || !commentsPanel) return;
+    commentsPanel.dataset.diagramId = id;
+    commentsPanel.classList.remove('hidden');
+    loadComments(id);
+  }
+  function loadComments(id) {
+    if (!commentsList) return;
+    commentsList.innerHTML = '<span class="text-muted-foreground">Loading…</span>';
+    fetch(API + '/diagrams/' + id + '/comments', { credentials: 'include' })
+      .then(function(r) { if (!r.ok) throw new Error(); return r.json(); })
+      .then(function(json) {
+        var list = (json.data != null) ? json.data : (Array.isArray(json) ? json : []);
+        if (list.length === 0) { commentsList.innerHTML = '<span class="text-muted-foreground">No comments yet.</span>'; return; }
+        commentsList.innerHTML = list.map(function(c) {
+          var date = c.updated_at || c.created_at || '';
+          if (date && date.length >= 10) date = date.slice(0, 10);
+          return '<div class="rounded border border-border bg-muted/30 px-2 py-1"><span class="text-foreground">' + (c.comment_text || '').replace(/</g, '&lt;') + '</span><span class="text-muted-foreground text-xs ml-2">' + date + '</span></div>';
+        }).join('');
+      })
+      .catch(function() { commentsList.innerHTML = '<span class="text-muted-foreground">Could not load comments.</span>'; });
+  }
+  document.getElementById('btn-add-comment').addEventListener('click', function() {
+    var id = commentsPanel && commentsPanel.dataset.diagramId;
+    var text = document.getElementById('comment-text').value.trim();
+    if (!id || !text) return;
+    fetch(API + '/diagrams/' + id + '/comments', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ comment_text: text })
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(j) { throw new Error(j.message || 'Failed to add comment'); });
+      document.getElementById('comment-text').value = '';
+      loadComments(id);
+    }).catch(function() {});
   });
 
   document.getElementById('btn-copy').addEventListener('click', function() {
@@ -221,6 +317,72 @@
 
   document.getElementById('btn-export-svg').addEventListener('click', exportSvg);
   document.getElementById('btn-export-png').addEventListener('click', exportPng);
+
+  document.getElementById('btn-ai').addEventListener('click', function() {
+    var d = document.querySelector('details');
+    if (d) { d.open = true; document.getElementById('ai-description').focus(); }
+  });
+  document.getElementById('btn-ai-generate').addEventListener('click', function() {
+    var desc = document.getElementById('ai-description').value.trim();
+    if (!desc) return;
+    showError('');
+    fetch(API + '/ai/generate-diagram', {
+      method: 'POST',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ description: desc, diagram_type: typeEl.value })
+    }).then(function(r) {
+      if (!r.ok) return r.json().then(function(j) { throw new Error(j.message || 'AI generate failed'); });
+      return r.json();
+    }).then(function(json) {
+      var diagram = (json.data && json.data.diagram) || json.diagram || '';
+      if (diagram) { sourceEl.value = diagram; debounceRender(); }
+    }).catch(function(e) { showError(e.message); });
+  });
+  document.getElementById('btn-share').addEventListener('click', function() {
+    if (!currentId) { showError('Save the diagram first to share.'); return; }
+    fetch(API + '/diagrams/' + currentId, {
+      method: 'PUT',
+      credentials: 'include',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ is_public: true })
+    }).then(function(r) {
+      if (!r.ok) return;
+      var url = window.location.origin + '/gallery?view=' + currentId;
+      navigator.clipboard.writeText(url).then(function() { showError(''); });
+    });
+  });
+
+  // Presence WebSocket (minimal island): connect when diagram id is set
+  var presenceWs = null;
+  var presencePanel = document.getElementById('presence-panel');
+  var presenceText = document.getElementById('presence-text');
+  function connectPresence(diagramId) {
+    if (presenceWs) { presenceWs.close(); presenceWs = null; }
+    if (!diagramId || !presencePanel || !presenceText) return;
+    var proto = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+    var url = proto + '//' + window.location.host + '/ws/collaboration/' + diagramId;
+    try {
+      presenceWs = new WebSocket(url);
+      presenceWs.onopen = function() { presenceText.textContent = 'Connecting…'; };
+      presenceWs.onmessage = function(ev) {
+        try {
+          var msg = JSON.parse(ev.data);
+          if (msg.type === 'presence' && msg.users && msg.users.length > 0) {
+            var n = msg.users.length;
+            presenceText.textContent = n === 1 ? '1 person viewing' : n + ' people viewing';
+          }
+        } catch (_) {}
+      };
+      presenceWs.onclose = function() { presenceText.textContent = ''; };
+      presenceWs.onerror = function() { presenceText.textContent = ''; };
+    } catch (_) { presenceText.textContent = ''; }
+    presencePanel.classList.remove('hidden');
+  }
+  function disconnectPresence() {
+    if (presenceWs) { presenceWs.close(); presenceWs = null; }
+    if (presencePanel) presencePanel.classList.add('hidden');
+  }
 
   // Init Mermaid then load or render
   mermaid.initialize({ startOnLoad: false, securityLevel: 'loose' });

@@ -77,15 +77,19 @@ func (h *Handler) Register(r *gin.Engine) {
 	grp.GET("/", h.servePage("index.html"))
 	grp.GET("/login", h.servePage("login.html"))
 	grp.GET("/signup", h.servePage("signup.html"))
-	grp.GET("/gallery", h.servePage("gallery.html"))
 	grp.GET("/join-workspace", h.servePage("join-workspace.html"))
 	grp.GET("/editor", h.requireAuthCookie(h.servePage("editor.html")))
-	grp.GET("/whiteboard", h.servePage("whiteboard.html"))
+	grp.GET("/whiteboard", h.requireAuthCookie(h.servePage("whiteboard.html")))
 	grp.GET("/dashboard", h.requireAuthCookie(h.serveDashboard))
 	if h.wsLister != nil && h.diagLister != nil {
 		grp.GET("/dashboard/partials/workspaces", h.requireAuthCookie(h.serveWorkspacesPartial))
 		grp.GET("/dashboard/partials/diagrams", h.requireAuthCookie(h.serveDiagramsPartial))
+		grp.GET("/gallery/partials/diagrams", h.requireAuthCookie(h.serveGalleryDiagramsPartial))
 	}
+	grp.GET("/gallery", h.requireAuthCookie(h.servePage("gallery.html")))
+	grp.GET("/workspaces/new", h.requireAuthCookie(h.servePage("workspaces-new.html")))
+	grp.GET("/forgot-password", h.servePage("forgot-password.html"))
+	grp.GET("/reset-password", h.servePage("reset-password.html"))
 	grp.POST("/login", h.handleLogin)
 	grp.POST("/signup", h.handleSignup)
 	grp.POST("/logout", h.handleLogout)
@@ -350,6 +354,97 @@ func (h *Handler) serveDiagramsPartial(c *gin.Context) {
 	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(b.String()))
 }
 
+// serveGalleryDiagramsPartial returns HTML fragment of diagram cards for gallery (with View, Edit, Delete, Share, Download).
+func (h *Handler) serveGalleryDiagramsPartial(c *gin.Context) {
+	userID := h.getUserID(c)
+	list, err := h.diagLister.ListDiagrams(c.Request.Context(), userID)
+	if err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	scope := strings.TrimSpace(c.Query("scope"))
+	if scope == "" {
+		scope = "all"
+	}
+	q := strings.TrimSpace(strings.ToLower(c.Query("q")))
+	filtered := make([]diagrammodel.DiagramResponse, 0, len(list))
+	for _, d := range list {
+		if scope == "personal" && d.WorkspaceID != nil {
+			continue
+		}
+		if q != "" {
+			title := strings.ToLower(d.Title)
+			dt := strings.ToLower(d.DiagramType)
+			if !strings.Contains(title, q) && !strings.Contains(dt, q) {
+				continue
+			}
+		}
+		filtered = append(filtered, d)
+	}
+	type diagramWithMeta struct {
+		diagrammodel.DiagramResponse
+		UpdatedAtFormatted string
+		EditorURL          string
+		ImageURLSafe       string
+	}
+	items := make([]diagramWithMeta, len(filtered))
+	for i := range filtered {
+		img := ""
+		if filtered[i].ImageURL != nil && *filtered[i].ImageURL != "" {
+			img = *filtered[i].ImageURL
+		}
+		items[i] = diagramWithMeta{
+			DiagramResponse:    filtered[i],
+			UpdatedAtFormatted: filtered[i].UpdatedAt.Format("Jan 2, 2006"),
+			EditorURL:           "/editor?id=" + filtered[i].ID.String(),
+			ImageURLSafe:        img,
+		}
+		if filtered[i].DiagramType == "whiteboard" {
+			items[i].EditorURL = "/whiteboard?id=" + filtered[i].ID.String()
+		}
+	}
+	tpl := template.Must(template.New("gallery").Parse(partialGalleryDiagramsHTML))
+	var b strings.Builder
+	if err := tpl.Execute(&b, map[string]interface{}{"Diagrams": items}); err != nil {
+		c.AbortWithStatus(http.StatusInternalServerError)
+		return
+	}
+	c.Data(http.StatusOK, "text/html; charset=utf-8", []byte(b.String()))
+}
+
+const partialGalleryDiagramsHTML = `
+<div id="gallery-diagrams" class="grid gap-4" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(260px,1fr));gap:1rem;">
+  {{range .Diagrams}}
+  <div class="gallery-card rounded-xl border border-border bg-card p-4 shadow-sm" data-diagram-id="{{.ID}}" style="border-radius:0.75rem;">
+    <div class="flex items-start justify-between gap-2">
+      <h3 class="font-semibold text-base truncate flex-1" style="min-width:0;"><a href="{{.EditorURL}}" class="link-primary" style="text-decoration:none;">{{.Title}}</a></h3>
+    </div>
+    <p class="text-xs text-muted-foreground mt-1">{{.DiagramType}} • {{.UpdatedAtFormatted}}</p>
+    <div class="mt-3 rounded-md bg-muted/50 h-24 flex items-center justify-center overflow-hidden" style="min-height:6rem;">
+      {{if .ImageURLSafe}}
+      <img src="{{.ImageURLSafe}}" alt="{{.Title}}" class="max-w-full max-h-full object-contain" />
+      {{else}}
+      <span class="text-xs text-muted-foreground">No preview</span>
+      {{end}}
+    </div>
+    <div class="mt-3 flex flex-wrap gap-2">
+      <a href="{{.EditorURL}}" class="btn btn-outline btn-sm">View</a>
+      <button type="button" class="gallery-share btn btn-outline btn-sm" data-id="{{.ID}}" data-title="{{.Title}}">Share</button>
+      {{if .ImageURLSafe}}
+      <a href="{{.ImageURLSafe}}" download="{{.Title}}.png" class="btn btn-outline btn-sm">Download</a>
+      {{end}}
+      <button type="button" class="gallery-delete btn btn-outline btn-sm text-destructive" data-id="{{.ID}}">Delete</button>
+    </div>
+  </div>
+  {{else}}
+  <div class="col-span-full rounded-xl border border-dashed border-border bg-card p-8 text-center" style="grid-column:1/-1;">
+    <p class="text-muted-foreground mb-4">No diagrams match.</p>
+    <a href="/editor" class="btn btn-primary">New Diagram</a>
+  </div>
+  {{end}}
+</div>
+`
+
 const partialWorkspacesHTML = `
 <div id="dashboard-workspaces" class="space-y-1">
   <p class="text-xs font-medium text-muted-foreground mb-2">Workspaces</p>
@@ -357,9 +452,8 @@ const partialWorkspacesHTML = `
   <a href="/dashboard?workspace={{.ID}}" class="block rounded-lg border border-border bg-card px-3 py-2 text-sm hover:bg-muted/50" style="text-decoration:none;color:inherit;">
     <span class="font-medium">{{.Name}}</span>
   </a>
-  {{else}}
-  <p class="text-sm text-muted-foreground">No workspaces yet.</p>
   {{end}}
+  <a href="/workspaces/new" class="block rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50" style="text-decoration:none;">+ Create workspace</a>
 </div>
 `
 

@@ -5,24 +5,96 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Join workspace – DiagramGen</title>
   <link rel="stylesheet" href="/static/css/site.css" />
+  <script src="/static/js/theme.js"></script>
   <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
 </head>
 <body class="min-h-screen bg-background">
   <nav class="border-b border-border bg-background/95 sticky top-0 z-50 w-full">
     <div class="w-full px-4 h-16 flex items-center justify-between">
       <a href="/" class="text-xl font-bold bg-clip-text text-transparent" style="background: linear-gradient(to right, hsl(var(--primary)), hsl(var(--primary) / 0.8)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">DiagramGen</a>
-      <a href="/login" class="btn btn-ghost btn-sm">Sign in</a>
+      <div class="flex items-center gap-2">
+        <button type="button" class="theme-toggle btn btn-ghost btn-sm" aria-label="Toggle theme"></button>
+        <a href="/login" class="btn btn-ghost btn-sm">Sign in</a>
+      </div>
     </div>
   </nav>
 
-  <main class="container mx-auto px-4 py-16 flex items-center justify-center min-h-[60vh]" style="max-width: 80rem; min-height: 60vh; display: flex; align-items: center; justify-content: center;">
-    <div class="rounded-2xl border border-border bg-card p-8 shadow-sm max-w-md w-full text-center" style="border-radius: 1rem; background-color: hsl(var(--card)); padding: 2rem;">
+  <main class="container mx-auto px-4 py-16 flex items-center justify-center min-h-[60vh]" style="max-width: 80rem; min-height: 60vh;">
+    <div class="rounded-2xl border border-border bg-card p-8 shadow-sm max-w-md w-full text-center" style="border-radius: 1rem;">
       <div id="join-status">
-        <p class="text-muted-foreground mb-4" style="color: hsl(var(--muted-foreground));">Checking invitation…</p>
-        <p class="text-sm text-muted-foreground" style="color: hsl(var(--muted-foreground));">If you are not signed in, <a href="/login" class="link-primary">sign in</a> first, then open this link again.</p>
+        <p class="text-muted-foreground mb-4">Checking invitation…</p>
       </div>
-      <a href="/dashboard" class="btn btn-primary mt-6">Go to Dashboard</a>
+      <div id="join-actions" class="hidden mt-4">
+        <button type="button" id="btn-accept" class="btn btn-primary">Accept invitation</button>
+      </div>
+      <div id="join-signin" class="hidden mt-4">
+        <p class="text-sm text-muted-foreground mb-2">Sign in to join this workspace.</p>
+        <a href="#" id="join-login-link" class="btn btn-primary">Sign in</a>
+      </div>
+      <div id="join-success" class="hidden mt-4">
+        <p class="text-primary font-medium mb-2">You've joined the workspace!</p>
+        <a href="/dashboard" class="btn btn-primary">Go to Dashboard</a>
+      </div>
+      <div id="join-error" class="hidden mt-4">
+        <p class="text-destructive mb-2" id="join-error-msg">This invitation is invalid or has expired.</p>
+        <a href="/" class="btn btn-outline">Back to home</a>
+      </div>
     </div>
   </main>
+
+  <script>
+(function() {
+  var API = '/api/v1';
+  var params = new URLSearchParams(window.location.search);
+  var token = params.get('token');
+  var statusEl = document.getElementById('join-status');
+  var actionsEl = document.getElementById('join-actions');
+  var signinEl = document.getElementById('join-signin');
+  var successEl = document.getElementById('join-success');
+  var errorEl = document.getElementById('join-error');
+  var errorMsgEl = document.getElementById('join-error-msg');
+  var loginLinkEl = document.getElementById('join-login-link');
+
+  function show(el) { el.classList.remove('hidden'); }
+  function hide(el) { el.classList.add('hidden'); }
+
+  if (!token || token.length < 30) {
+    hide(statusEl);
+    errorMsgEl.textContent = 'Invalid invitation link.';
+    show(errorEl);
+  } else {
+    loginLinkEl.href = '/login?redirect=' + encodeURIComponent('/join-workspace?token=' + token);
+    document.getElementById('btn-accept').addEventListener('click', function() {
+      fetch(API + '/invitations/accept', {
+        method: 'POST',
+        credentials: 'include',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ token: token })
+      }).then(function(r) {
+        if (r.status === 401) {
+          hide(statusEl); hide(actionsEl);
+          show(signinEl);
+          return;
+        }
+        if (!r.ok) {
+          return r.json().then(function(j) {
+            hide(statusEl); hide(actionsEl);
+            errorMsgEl.textContent = j.message || 'Failed to join workspace.';
+            show(errorEl);
+          });
+        }
+        hide(statusEl); hide(actionsEl);
+        show(successEl);
+      }).catch(function() {
+        hide(statusEl); hide(actionsEl);
+        errorMsgEl.textContent = 'Failed to join workspace. Please try again.';
+        show(errorEl);
+      });
+    });
+    statusEl.innerHTML = '<p class="text-muted-foreground mb-4">You have been invited to join a workspace.</p>';
+    show(actionsEl);
+  }
+})();
+  </script>
 </body>
 </html>

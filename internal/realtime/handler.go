@@ -47,14 +47,18 @@ func (h *Handler) ServeWS(c *gin.Context) {
 	}
 	token := strings.TrimSpace(c.Query("token"))
 	if token == "" {
-		// Allow Authorization header for WebSocket (some clients send it on upgrade)
 		auth := c.GetHeader("Authorization")
 		if strings.HasPrefix(auth, "Bearer ") {
 			token = strings.TrimPrefix(auth, "Bearer ")
 		}
 	}
 	if token == "" {
-		common.WriteError(c, http.StatusUnauthorized, common.ErrorBody{Code: common.CodeUnauthorized, Message: "Missing token. Use query ?token=<access_token> or Authorization: Bearer <token>."})
+		if t, _ := c.Cookie("access_token"); t != "" {
+			token = t
+		}
+	}
+	if token == "" {
+		common.WriteError(c, http.StatusUnauthorized, common.ErrorBody{Code: common.CodeUnauthorized, Message: "Missing token. Use query ?token=<access_token>, Authorization: Bearer <token>, or access_token cookie."})
 		return
 	}
 	userID, email, err := h.issuer.ValidateAccessToken(token)

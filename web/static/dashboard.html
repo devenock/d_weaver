@@ -5,6 +5,7 @@
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>Dashboard – DiagramGen</title>
   <link rel="stylesheet" href="/static/css/site.css" />
+  <script src="/static/js/theme.js"></script>
   <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
 </head>
 <body class="min-h-screen bg-background">
@@ -22,6 +23,7 @@
         </div>
       </div>
       <div class="flex items-center gap-4">
+        <button type="button" class="theme-toggle btn btn-ghost btn-sm" aria-label="Toggle theme"></button>
         <span class="text-sm text-muted-foreground" id="user-email">{{.UserEmail}}</span>
         <form method="post" action="/logout" class="inline">
           <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
