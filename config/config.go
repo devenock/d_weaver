@@ -90,6 +90,8 @@ func Load() (*Config, error) {
 	v.SetDefault("server.port", 8200)
 	v.SetDefault("server.read_timeout", 30)
 	v.SetDefault("server.write_timeout", 30)
+	// Default DB URL matches Docker Compose Postgres (deployments/docker-compose.yml) when API runs on host.
+	v.SetDefault("db.url", "postgres://dweaver:dweaver_dev_password@localhost:5432/dweaver?sslmode=disable")
 	v.SetDefault("db.max_open_conns", 25)
 	v.SetDefault("db.max_idle_conns", 5)
 	v.SetDefault("db.conn_max_lifetime", 300)

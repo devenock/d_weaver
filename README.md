@@ -74,7 +74,7 @@ All other routes below require `Authorization: Bearer <access_token>`.
 
 | Variable | Required | Default | Description |
 |----------|----------|---------|-------------|
-| `DB_URL` | Yes (for API) | — | PostgreSQL 16 URL, e.g. `postgres://user:pass@localhost:5432/dweaver?sslmode=disable` |
+| `DB_URL` | No* | `postgres://dweaver:dweaver_dev_password@localhost:5432/dweaver?sslmode=disable` | PostgreSQL 16 URL. Default matches Docker Compose Postgres when API runs on host. Override in `.env` or env. *Required only if you change DB. |
 | `JWT_REFRESH_TOKEN_SECRET` | Dev | `dev-secret-change-in-production` | HS256 secret; use RS256 keys in prod |
 | `JWT_PRIVATE_KEY_PATH` | Prod (RS256) | — | Path to RS256 private key |
 | `JWT_PUBLIC_KEY_PATH` | Prod (RS256) | — | Path to RS256 public key |
@@ -99,9 +99,14 @@ Optional: `config.yaml` or `config/config.yaml` (viper); env overrides file.
 
 From the repo root:
 
+1. **Postgres in Docker** (recommended for local dev): start Postgres with `make docker-up` (or `docker compose -f deployments/docker-compose.yml up -d postgres`). The API defaults to `DB_URL=postgres://dweaver:dweaver_dev_password@localhost:5432/dweaver?sslmode=disable`, so no env needed.
+2. **Override DB or other vars**: copy `.env.example` to `.env` and edit. The API loads `.env` automatically when present.
+
 ```bash
-export DB_URL="postgres://user:password@localhost:5432/dweaver?sslmode=disable"
-# Optional: JWT_REFRESH_TOKEN_SECRET for dev; for prod set JWT_PRIVATE_KEY_PATH and JWT_PUBLIC_KEY_PATH
+# Start Postgres (and optionally Redis) in Docker
+make docker-up
+
+# Run the API (uses default DB URL or .env)
 go run ./cmd/api
 ```
 
