@@ -10,7 +10,7 @@ import (
 	"os"
 	"time"
 
-	"github.com/devenock/d_weaver/internal/config"
+	"github.com/devenock/d_weaver/config"
 	"github.com/golang-jwt/jwt/v5"
 	"github.com/google/uuid"
 )

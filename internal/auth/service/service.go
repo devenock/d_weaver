@@ -7,7 +7,7 @@ import (
 	"github.com/devenock/d_weaver/internal/auth/jwt"
 	"github.com/devenock/d_weaver/internal/auth/model"
 	"github.com/devenock/d_weaver/internal/common"
-	"github.com/devenock/d_weaver/internal/db"
+	"github.com/devenock/d_weaver/pkg/database"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )

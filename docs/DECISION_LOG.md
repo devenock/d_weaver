@@ -4,6 +4,19 @@ This document explains every design and implementation decision made so far for 
 
 ---
 
+## 0. Use existing project structure (config, pkg/database, pkg/logger)
+
+**Decision:** Config, database, and logger live in the **existing** project layout. Do not create `internal/config`, `internal/db`, or `internal/logger`.
+
+- **`config/`** (repo root): Viper-based config; import `github.com/devenock/d_weaver/config`.
+- **`pkg/database/`**: DB pool, migrations, and helpers (e.g. `IsUniqueViolation`); package name is `db`; import `github.com/devenock/d_weaver/pkg/database`.
+- **`pkg/logger/`**: Zerolog-based logger with levels; import `github.com/devenock/d_weaver/pkg/logger`.
+- **`docs/`** (repo root): OpenAPI specs (e.g. embedded auth); import `github.com/devenock/d_weaver/docs`.
+
+**Reason:** The project already had these directories; all code was switched to use them so the structure stays consistent and nothing is duplicated.
+
+---
+
 ## 1. Project baseline and process
 
 ### 1.1 AGENTS.md as single source of truth
