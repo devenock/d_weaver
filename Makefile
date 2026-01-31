@@ -13,8 +13,12 @@ help:
 	@echo "Docker (full stack)"
 	@echo "  make docker-up        Start postgres, redis, api, client"
 	@echo "  make docker-down      Stop all containers"
-	@echo "  make docker-build     Rebuild and start containers"
-	@echo "  make docker-logs      Follow logs"
+	@echo "  make docker-build     Build and start containers"
+	@echo "  make docker-rebuild   Rebuild images (no cache) and start"
+	@echo "  make docker-restart   Restart all containers"
+	@echo "  make docker-logs      Follow all logs"
+	@echo "  make docker-logs-api  make docker-logs-client  (per-service)"
+	@echo "  make docker-logs-postgres  make docker-logs-redis"
 	@echo "  make docker-ps        List running containers"
 	@echo ""
 	@echo "Backend (Go API)"
@@ -46,8 +50,27 @@ docker-down:
 docker-build:
 	docker compose -f $(COMPOSE_FILE) up -d --build
 
+docker-rebuild:
+	docker compose -f $(COMPOSE_FILE) build --no-cache
+	docker compose -f $(COMPOSE_FILE) up -d
+
+docker-restart:
+	docker compose -f $(COMPOSE_FILE) restart
+
 docker-logs:
 	docker compose -f $(COMPOSE_FILE) logs -f
+
+docker-logs-api:
+	docker compose -f $(COMPOSE_FILE) logs -f api
+
+docker-logs-client:
+	docker compose -f $(COMPOSE_FILE) logs -f client
+
+docker-logs-postgres:
+	docker compose -f $(COMPOSE_FILE) logs -f postgres
+
+docker-logs-redis:
+	docker compose -f $(COMPOSE_FILE) logs -f redis
 
 docker-ps:
 	docker compose -f $(COMPOSE_FILE) ps

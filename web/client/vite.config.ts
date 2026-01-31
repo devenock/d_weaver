@@ -18,4 +18,19 @@ export default defineConfig({
       "@": path.resolve(__dirname, "./src"),
     },
   },
+  server: {
+    proxy: {
+      "/api-docs": {
+        target: "http://localhost:8200",
+        changeOrigin: true,
+      },
+    },
+    port: 3000,
+    host: "0.0.0.0",
+    open: true,
+    cors: {
+      origin: "http://localhost:3000",
+      credentials: true,
+    },
+  },
 });

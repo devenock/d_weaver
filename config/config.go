@@ -19,6 +19,12 @@ type Config struct {
 	Upload    UploadConfig    `mapstructure:"upload"`
 	AI        AIConfig        `mapstructure:"ai"`
 	Log       LogConfig       `mapstructure:"log"`
+	Web       WebConfig       `mapstructure:"web"`
+}
+
+// WebConfig for serving the htmx static frontend.
+type WebConfig struct {
+	StaticDir string `mapstructure:"static_dir"` // e.g. web/static
 }
 
 // LogConfig for application logging.
@@ -115,6 +121,7 @@ func Load() (*Config, error) {
 	v.SetDefault("ai.base_url", "https://ai.gateway.lovable.dev/v1")
 	v.SetDefault("ai.model", "google/gemini-2.5-flash")
 	v.SetDefault("log.level", "info")
+	v.SetDefault("web.static_dir", "web/static")
 
 	v.SetConfigName("config")
 	v.SetConfigType("yaml")

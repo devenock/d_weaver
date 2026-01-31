@@ -117,6 +117,12 @@ Migrations run automatically on startup when `DB_URL` is set and the `migrations
 - OpenAPI (raw): `GET /api-docs/{auth,workspace,diagram,ai,realtime}`
 - **Swagger UI (interactive):** `GET /swagger` or `GET /docs` at the API origin (e.g. `http://localhost:8200/swagger`)
 
+### Docker full stack
+
+- **`make docker-up`** — API on **8200**, client app on **3000**, Postgres 5432, Redis 6379. The *client* container serves the built frontend on port 3000.
+- **`make client-dev`** — Run the Vite dev server locally (default port **5173**). Use this when developing the frontend; set `VITE_API_URL=http://localhost:8200` so it talks to the API. Swagger is always on the API: **http://localhost:8200/swagger**.
+- **`make docker-rebuild`** — Rebuild images (no cache) and start. **`make docker-restart`** — Restart containers. **`make docker-logs`** (or `docker-logs-api`, `docker-logs-client`) — View logs.
+
 ---
 
 ## Implemented (ready for testing)

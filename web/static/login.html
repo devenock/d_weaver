@@ -1,0 +1,85 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Sign in – DiagramGen</title>
+  <link rel="stylesheet" href="/static/css/site.css" />
+  <script src="https://unpkg.com/htmx.org@2.0.4" defer></script>
+</head>
+<body class="min-h-screen bg-background">
+  <div class="grid min-h-screen lg:grid-cols-2" style="display: grid; min-height: 100vh; grid-template-columns: 1fr 1fr;">
+    <!-- Left panel (AuthShell marketing) -->
+    <div class="relative hidden overflow-hidden border-r border-border lg:flex" style="display: none;">
+      <div class="absolute inset-0 bg-primary/25 bg-background bg-muted/40" style="background: linear-gradient(to bottom right, hsl(var(--primary) / 0.25), hsl(var(--background)), hsl(var(--muted) / 0.4));"></div>
+      <div class="relative flex w-full flex-col p-10">
+        <a href="/" class="inline-flex items-center gap-2 text-lg font-semibold tracking-tight" style="display: inline-flex; gap: 0.5rem;">
+          <span class="inline-flex h-9 w-9 items-center justify-center rounded-xl bg-primary text-primary-foreground shadow-sm">✨</span>
+          <span class="bg-clip-text text-transparent" style="background: linear-gradient(to right, hsl(var(--primary)), hsl(var(--primary) / 0.7)); -webkit-background-clip: text; -webkit-text-fill-color: transparent;">DiagramGen</span>
+        </a>
+        <div class="mt-16 space-y-6">
+          <h2 class="text-4xl font-semibold leading-tight tracking-tight">Welcome back.</h2>
+          <p class="max-w-xl text-base leading-relaxed text-muted-foreground" style="color: hsl(var(--muted-foreground)); max-width: 36rem;">Pick up where you left off—manage diagrams, workspaces, and exports from your dashboard.</p>
+          <div class="mt-8 grid gap-3 text-sm">
+            <div class="flex items-start gap-3"><span class="text-primary">✓</span> <span class="text-muted-foreground" style="color: hsl(var(--muted-foreground));">Clean defaults with a modern, consistent design system.</span></div>
+            <div class="flex items-start gap-3"><span class="text-primary">✓</span> <span class="text-muted-foreground" style="color: hsl(var(--muted-foreground));">Workspaces and sharing built around real collaboration.</span></div>
+            <div class="flex items-start gap-3"><span class="text-primary">✓</span> <span class="text-muted-foreground" style="color: hsl(var(--muted-foreground));">Export-ready diagrams (PNG/SVG/PDF) when you need them.</span></div>
+          </div>
+        </div>
+        <div class="mt-auto pt-10 text-xs text-muted-foreground" style="color: hsl(var(--muted-foreground));">© 2024 DiagramGen</div>
+      </div>
+    </div>
+
+    <!-- Right panel: form -->
+    <div class="flex flex-col" style="display: flex; flex-direction: column;">
+      <div class="flex items-center justify-between px-4 py-4 lg:px-10">
+        <a href="/" class="inline-flex items-center gap-2 text-sm text-muted-foreground hover:text-foreground" style="color: hsl(var(--muted-foreground));">← Back to home</a>
+      </div>
+      <div class="flex flex-1 items-center justify-center px-4 pb-12 pt-6 lg:px-10">
+        <div class="w-full max-w-[440px]">
+          <div class="rounded-2xl border border-border bg-background/70 p-6 shadow-sm sm:p-8" style="border-radius: 1rem; background-color: hsl(var(--background) / 0.7); padding: 1.5rem;">
+            <div class="space-y-2">
+              <h1 class="text-2xl font-semibold tracking-tight">Sign in</h1>
+              <p class="text-sm text-muted-foreground" style="color: hsl(var(--muted-foreground));">Continue to your workspace and keep building.</p>
+            </div>
+
+            <!-- Error message from ?error= query -->
+            <div id="login-error" class="hidden mt-4 alert-error" role="alert"></div>
+
+            <form method="post" action="/login" class="space-y-4" style="margin-top: 1.5rem;">
+              <input type="hidden" name="redirect" id="redirect" value="/dashboard" />
+              <div class="space-y-2">
+                <label for="email" class="block text-sm font-medium text-foreground">Email</label>
+                <input id="email" name="email" type="email" placeholder="you@company.com" autocomplete="email" required class="h-11" style="height: 2.75rem;" />
+              </div>
+              <div class="space-y-2">
+                <label for="password" class="block text-sm font-medium text-foreground">Password</label>
+                <input id="password" name="password" type="password" placeholder="••••••••" autocomplete="current-password" required class="h-11" style="height: 2.75rem;" />
+              </div>
+              <button type="submit" class="btn btn-primary h-11 w-full" style="height: 2.75rem; width: 100%;">Continue</button>
+            </form>
+
+            <div class="mt-6 text-center text-sm text-muted-foreground" style="color: hsl(var(--muted-foreground));">
+              Don't have an account? <a href="/signup" class="link-primary font-medium">Create one</a>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <script>
+    (function() {
+      var q = location.search;
+      var m = /[?&]redirect=([^&]+)/.exec(q);
+      if (m && m[1]) { var r = decodeURIComponent(m[1]); if (r.startsWith('/')) document.getElementById('redirect').value = r; }
+      var err = /[?&]error=([^&]+)/.exec(q);
+      var msg = { invalid_credentials: 'Invalid email or password.', invalid_input: 'Please enter email and password.' };
+      if (err && msg[err[1]]) {
+        var el = document.getElementById('login-error');
+        el.textContent = msg[err[1]];
+        el.classList.remove('hidden');
+      }
+    })();
+  </script>
+</body>
+</html>

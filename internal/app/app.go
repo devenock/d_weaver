@@ -23,6 +23,7 @@ import (
 	diagramsvc "github.com/devenock/d_weaver/internal/diagram/service"
 	"github.com/devenock/d_weaver/internal/middleware"
 	"github.com/devenock/d_weaver/internal/realtime"
+	"github.com/devenock/d_weaver/internal/web"
 	workspacehandler "github.com/devenock/d_weaver/internal/workspace/handler"
 	workspacerepo "github.com/devenock/d_weaver/internal/workspace/repository"
 	workspacesvc "github.com/devenock/d_weaver/internal/workspace/service"
@@ -148,6 +149,12 @@ func New(cfg *config.Config, log pkglogger.Logger) (*App, error) {
 	realtimeHub := realtime.NewHub()
 	realtimeHandler := realtime.NewHandler(realtimeHub, jwtIssuer, diagramSvc)
 	r.GET("/ws/collaboration/:diagramId", realtimeHandler.ServeWS)
+
+	// htmx static frontend and cookie-based auth (Phase 1)
+	if cfg.Web.StaticDir != "" {
+		webHandler := web.New(authSvc, jwtIssuer, cfg.Web.StaticDir, cfg.JWT.AccessDurationMinutes)
+		webHandler.Register(r)
+	}
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
