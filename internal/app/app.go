@@ -11,6 +11,9 @@ import (
 
 	"github.com/devenock/d_weaver/config"
 	"github.com/devenock/d_weaver/docs"
+	"github.com/devenock/d_weaver/internal/ai/client"
+	aihandler "github.com/devenock/d_weaver/internal/ai/handler"
+	aisvc "github.com/devenock/d_weaver/internal/ai/service"
 	"github.com/devenock/d_weaver/internal/auth/handler"
 	"github.com/devenock/d_weaver/internal/auth/jwt"
 	authrepo "github.com/devenock/d_weaver/internal/auth/repository"
@@ -46,6 +49,7 @@ func New(cfg *config.Config) (*App, error) {
 	r.GET("/api-docs/auth", docs.ServeAuth)
 	r.GET("/api-docs/workspace", docs.ServeWorkspace)
 	r.GET("/api-docs/diagram", docs.ServeDiagram)
+	r.GET("/api-docs/ai", docs.ServeAI)
 	// Serve uploaded diagram images (PDF: 10MB limit enforced on upload)
 	if cfg.Upload.Dir != "" {
 		r.Static("/uploads", cfg.Upload.Dir)
@@ -76,6 +80,11 @@ func New(cfg *config.Config) (*App, error) {
 	diagramSvc := diagramsvc.New(diagramRepo, workspaceRepo)
 	diagramHandler := diagramhandler.New(diagramSvc, jwtIssuer, cfg.Upload)
 	diagramHandler.Register(v1)
+
+	aiGen := client.NewHTTPGenerator(cfg.AI.APIKey, cfg.AI.BaseURL, cfg.AI.Model)
+	aiSvc := aisvc.New(aiGen)
+	aiHandler := aihandler.New(aiSvc)
+	aiHandler.Register(v1, jwtIssuer)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{

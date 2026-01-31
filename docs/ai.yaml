@@ -1,0 +1,114 @@
+openapi: 3.0.3
+info:
+  title: DWeaver AI API
+  description: AI generate-diagram endpoint (DWeaver Backend Project Requirements).
+  version: 1.0.0
+
+servers:
+  - url: /api/v1
+    description: API v1 base
+
+tags:
+  - name: ai
+    description: AI diagram generation
+
+security:
+  - BearerAuth: []
+
+paths:
+  /ai/generate-diagram:
+    post:
+      tags: [ai]
+      summary: Generate diagram from description
+      description: Generates Mermaid diagram code from a text description using an AI model.
+      operationId: generateDiagram
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              $ref: '#/components/schemas/GenerateDiagramRequest'
+      responses:
+        '200':
+          description: Generated Mermaid diagram code
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/GenerateDiagramDataResponse'
+        '400':
+          $ref: '#/components/responses/BadRequest'
+        '401':
+          $ref: '#/components/responses/Unauthorized'
+        '402':
+          description: Payment required (e.g. add credits)
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '429':
+          description: Rate limit exceeded
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/ErrorBody'
+        '500':
+          $ref: '#/components/responses/InternalError'
+
+components:
+  securitySchemes:
+    BearerAuth:
+      type: http
+      scheme: bearer
+      bearerFormat: JWT
+  schemas:
+    GenerateDiagramRequest:
+      type: object
+      required: [description]
+      properties:
+        description:
+          type: string
+          maxLength: 4096
+          description: Text description of the diagram to generate
+        diagram_type:
+          type: string
+          maxLength: 50
+          description: Optional hint (e.g. flowchart, sequence, class, er, architecture)
+    GenerateDiagramResponse:
+      type: object
+      properties:
+        diagram:
+          type: string
+          description: Mermaid diagram source code
+    GenerateDiagramDataResponse:
+      type: object
+      properties:
+        data:
+          $ref: '#/components/schemas/GenerateDiagramResponse'
+    ErrorBody:
+      type: object
+      properties:
+        code:
+          type: string
+        message:
+          type: string
+        details:
+          type: object
+  responses:
+    BadRequest:
+      description: Invalid or missing input (e.g. description required)
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    Unauthorized:
+      description: Missing or invalid token
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'
+    InternalError:
+      description: AI gateway or internal error
+      content:
+        application/json:
+          schema:
+            $ref: '#/components/schemas/ErrorBody'

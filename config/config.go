@@ -16,6 +16,14 @@ type Config struct {
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
 	CORS      CORSConfig      `mapstructure:"cors"`
 	Upload    UploadConfig    `mapstructure:"upload"`
+	AI        AIConfig        `mapstructure:"ai"`
+}
+
+// AIConfig for generate-diagram (OpenAI-compatible chat endpoint).
+type AIConfig struct {
+	APIKey  string `mapstructure:"api_key"`  // Bearer token for the AI gateway
+	BaseURL string `mapstructure:"base_url"` // e.g. https://ai.gateway.lovable.dev/v1
+	Model   string `mapstructure:"model"`   // e.g. google/gemini-2.5-flash
 }
 
 // UploadConfig for diagram image uploads (PDF: 10MB limit, type checks).
@@ -92,6 +100,8 @@ func Load() (*Config, error) {
 	v.SetDefault("cors.allowed_headers", []string{"Authorization", "Content-Type", "X-Request-ID"})
 	v.SetDefault("upload.dir", "uploads")
 	v.SetDefault("upload.max_bytes", 10*1024*1024) // 10MB
+	v.SetDefault("ai.base_url", "https://ai.gateway.lovable.dev/v1")
+	v.SetDefault("ai.model", "google/gemini-2.5-flash")
 
 	v.SetConfigName("config")
 	v.SetConfigType("yaml")
