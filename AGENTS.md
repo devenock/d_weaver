@@ -12,9 +12,23 @@ This file is the **baseline for all work** on the DWeaver backend. Follow it str
 
 ---
 
-## 2. Architecture
+## 2. Project Structure (Use Existing)
 
-### 2.1 Layered Layout
+**Do not create new top-level packages for config, database, or logger.** Use the existing layout:
+
+- **`config/`** — Application configuration (viper, env, YAML). Import: `github.com/devenock/d_weaver/config`.
+- **`pkg/database/`** — DB pool, migrations, and DB helpers (e.g. `IsUniqueViolation`). Package name is `db`; import: `github.com/devenock/d_weaver/pkg/database`.
+- **`pkg/logger/`** — Level-based logger interface and zerolog implementation. Import: `github.com/devenock/d_weaver/pkg/logger`.
+- **`docs/`** — OpenAPI specs (e.g. embedded auth spec). Import: `github.com/devenock/d_weaver/docs`.
+- **`internal/`** — App bootstrap (`internal/app`), domain modules (e.g. `internal/auth`), and shared code (`internal/common`).
+
+Before adding a new directory, scan the project to see if an equivalent folder or package already exists.
+
+---
+
+## 3. Architecture
+
+### 3.1 Layered Layout
 
 Every feature is implemented in **layers**. No business logic in HTTP handlers.
 
@@ -24,7 +38,7 @@ Every feature is implemented in **layers**. No business logic in HTTP handlers.
 
 Flow: `Handler → Service → Repository`. Handlers must not call repositories directly.
 
-### 2.2 Module Order (Priority)
+### 3.2 Module Order (Priority)
 
 Implement and document **one module at a time**. Do not start the next module until the current one is implemented, documented in Swagger, and reviewed.
 
@@ -34,7 +48,7 @@ Implement and document **one module at a time**. Do not start the next module un
 4. **AI** — generate-diagram  
 5. **Real-time** — WebSocket collaboration (`/ws/collaboration/:diagramId`)
 
-### 2.3 API Contract
+### 3.3 API Contract
 
 - Base path: `/api/v1`.
 - Auth routes: `/api/v1/auth/*`.
@@ -47,7 +61,7 @@ Follow the exact **Method + Endpoint** table in the PDF for each module. Do not 
 
 ---
 
-## 3. Database & Migrations
+## 4. Database & Migrations
 
 - **Database**: PostgreSQL 16. Use the **exact schema** from the PDF (users, workspaces, workspace_members, workspace_invitations, diagrams, comments, collaboration_sessions) and the specified indexes.
 - **Driver / pool**: pgxpool.
@@ -57,7 +71,7 @@ Follow the exact **Method + Endpoint** table in the PDF for each module. Do not 
 
 ---
 
-## 4. Security (from PDF)
+## 5. Security (from PDF)
 
 - **Transport**: TLS 1.3 in production.
 - **Auth**: JWT with RS256. Access token ~15 min, refresh token ~7 days.
@@ -70,7 +84,7 @@ Follow the exact **Method + Endpoint** table in the PDF for each module. Do not 
 
 ---
 
-## 5. Non-Functional Targets (from PDF)
+## 6. Non-Functional Targets (from PDF)
 
 - API p95 latency: &lt; 100 ms where applicable.
 - WebSocket latency: &lt; 50 ms.
@@ -80,7 +94,7 @@ Follow the exact **Method + Endpoint** table in the PDF for each module. Do not 
 
 ---
 
-## 6. Logging
+## 7. Logging
 
 - Use **log levels** (e.g. Debug, Info, Warn, Error).
 - Use a single logging abstraction (e.g. interface) so the implementation (zerolog/zap) can be swapped.
@@ -88,7 +102,7 @@ Follow the exact **Method + Endpoint** table in the PDF for each module. Do not 
 
 ---
 
-## 7. Errors & HTTP Responses
+## 8. Errors & HTTP Responses
 
 - **Consistent error format** for all APIs. Use a single response shape, e.g.:
   - `code`: stable string (e.g. `invalid_input`, `unauthorized`, `not_found`).
@@ -99,7 +113,7 @@ Follow the exact **Method + Endpoint** table in the PDF for each module. Do not 
 
 ---
 
-## 8. Documentation & Swagger
+## 9. Documentation & Swagger
 
 - **Per-module Swagger**: Each module adds its own paths, request/response schemas, and tags to the main OpenAPI spec.
 - Document every public endpoint (method, path, request body, responses, auth). Use the same path and method as in the PDF.
@@ -107,7 +121,7 @@ Follow the exact **Method + Endpoint** table in the PDF for each module. Do not 
 
 ---
 
-## 9. Testing
+## 10. Testing
 
 - **Test each module independently.** Unit tests for service and repository; handler tests (e.g. httptest) for HTTP contract.
 - Use **testify** and standard **httptest** as in the PDF. Prefer table-driven tests for multiple cases.
@@ -115,7 +129,7 @@ Follow the exact **Method + Endpoint** table in the PDF for each module. Do not 
 
 ---
 
-## 10. Code & Repo Conventions
+## 11. Code & Repo Conventions
 
 - **Go**: Format with `gofmt`/`goimports`. Follow normal Go style (effective go, common style guides).
 - **Imports**: Group stdlib, external, then internal. No unused imports.
@@ -126,15 +140,16 @@ Follow the exact **Method + Endpoint** table in the PDF for each module. Do not 
 
 ---
 
-## 11. Foundation Layout
+## 12. Foundation Layout
 
-The repo should support the above with a clear foundation:
+The repo uses the existing packages for foundation:
 
-- **Config** (viper): server, DB, Redis, JWT, rate limit, CORS, etc.
-- **Logger**: level-based, one interface used across handlers and services.
+- **`config/`**: server, DB, Redis, JWT, rate limit, CORS, etc. (viper).
+- **`pkg/logger/`**: level-based logger interface; use it across handlers and services.
 - **Common errors**: Domain error types and a shared way to translate them into the standard HTTP error body.
 - **Response helpers**: Helpers to send success and error payloads in the chosen JSON shape so all handlers stay consistent.
+- **`pkg/database/`**: DB pool and migrations; use for all DB access.
 - **Router**: Gin engine, `/api/v1` group, middleware (auth, rate limit, CORS, request ID, logging). Mount health/ready outside `/api/v1` if desired.
-- **App bootstrap**: Load config, init logger, DB pool, Redis client, then router; run server with graceful shutdown.
+- **App bootstrap** (`internal/app`): Load config from `config/`, init DB from `pkg/database`, then router; run server with graceful shutdown.
 
 Keep **AGENTS.md** updated when the PDF or product decisions change (new modules, new endpoints, new NFRs). When in doubt, resolve by re-reading the PDF and this file.

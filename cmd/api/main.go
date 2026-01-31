@@ -5,7 +5,7 @@ import (
 	"os"
 
 	"github.com/devenock/d_weaver/internal/app"
-	"github.com/devenock/d_weaver/internal/config"
+	"github.com/devenock/d_weaver/config"
 )
 
 func main() {

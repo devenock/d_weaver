@@ -13,9 +13,9 @@ import (
 	"github.com/devenock/d_weaver/internal/auth/jwt"
 	authrepo "github.com/devenock/d_weaver/internal/auth/repository"
 	authsvc "github.com/devenock/d_weaver/internal/auth/service"
-	"github.com/devenock/d_weaver/internal/config"
-	"github.com/devenock/d_weaver/internal/db"
-	"github.com/devenock/d_weaver/internal/docs"
+	"github.com/devenock/d_weaver/config"
+	"github.com/devenock/d_weaver/pkg/database"
+	"github.com/devenock/d_weaver/docs"
 	"github.com/gin-gonic/gin"
 )
 
