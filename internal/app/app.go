@@ -16,6 +16,9 @@ import (
 	"github.com/devenock/d_weaver/config"
 	"github.com/devenock/d_weaver/pkg/database"
 	"github.com/devenock/d_weaver/docs"
+	workspacehandler "github.com/devenock/d_weaver/internal/workspace/handler"
+	workspacerepo "github.com/devenock/d_weaver/internal/workspace/repository"
+	workspacesvc "github.com/devenock/d_weaver/internal/workspace/service"
 	"github.com/gin-gonic/gin"
 )
 
@@ -38,6 +41,7 @@ func New(cfg *config.Config) (*App, error) {
 	r.GET("/ready", func(c *gin.Context) { c.JSON(http.StatusOK, gin.H{"status": "ready"}) })
 	// Swagger/OpenAPI per module (AGENTS: document each module)
 	r.GET("/api-docs/auth", docs.ServeAuth)
+	r.GET("/api-docs/workspace", docs.ServeWorkspace)
 
 	// API v1 group (PDF: /api/v1)
 	v1 := r.Group("/api/v1")
@@ -54,6 +58,11 @@ func New(cfg *config.Config) (*App, error) {
 	authSvc := authsvc.New(authRepo, jwtIssuer, cfg.JWT.AccessDurationMinutes, cfg.JWT.RefreshDurationDays)
 	authHandler := handler.New(authSvc)
 	authHandler.Register(v1)
+
+	workspaceRepo := workspacerepo.New(pool)
+	workspaceSvc := workspacesvc.New(workspaceRepo)
+	workspaceHandler := workspacehandler.New(workspaceSvc, jwtIssuer)
+	workspaceHandler.Register(v1)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{
