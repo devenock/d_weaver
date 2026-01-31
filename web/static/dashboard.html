@@ -19,37 +19,50 @@
         </a>
       </div>
       <div class="flex-1 overflow-auto p-4 space-y-4">
-        <div>
-          <p class="text-xs font-medium text-muted-foreground mb-2">Workspaces</p>
-          <div id="sidebar-workspaces" hx-get="/dashboard/partials/workspaces" hx-trigger="load" hx-swap="innerHTML">
-            <p class="text-sm text-muted-foreground">Loading…</p>
-          </div>
+        <div id="sidebar-workspaces" hx-get="/dashboard/partials/workspaces?workspace={{.WorkspaceID}}" hx-trigger="load" hx-swap="innerHTML">
+          <p class="text-sm text-muted-foreground">Loading…</p>
         </div>
         <div id="sidebar-nav" hx-get="/dashboard/partials/sidebar" hx-trigger="load" hx-swap="innerHTML">
           <p class="text-sm text-muted-foreground">Loading…</p>
         </div>
       </div>
       <div class="p-4 border-t border-border text-xs text-muted-foreground text-center">
-        <span id="sidebar-current-workspace">Personal</span>
+        <span id="sidebar-current-workspace">{{.CurrentWorkspaceName}}</span>
       </div>
     </aside>
 
     <!-- Main area (matches React SidebarInset) -->
     <div class="dashboard-main flex flex-col flex-1 min-w-0">
-      <!-- Header (matches React DashboardHeader) -->
-      <header class="dashboard-header sticky top-0 z-40 flex h-14 md:h-16 w-full items-center gap-2 md:gap-4 border-b border-border bg-background/95 px-3 md:px-6 shrink-0">
+      <!-- Header (matches React DashboardHeader: sidebar trigger, search, Invite Team, Bell, theme, avatar dropdown) -->
+      <header class="dashboard-header sticky top-0 z-40 flex h-14 md:h-16 w-full items-center gap-2 md:gap-4 border-b border-border bg-background/95 backdrop-blur px-3 md:px-6 shrink-0">
+        <button type="button" class="dashboard-sidebar-trigger -ml-1 flex-shrink-0 md:hidden p-2 rounded-md hover:bg-muted/50" aria-label="Toggle sidebar">
+          <span class="dashboard-sidebar-trigger-icon" aria-hidden="true">☰</span>
+        </button>
         <div class="flex-1 min-w-0 max-w-lg">
           <div class="relative">
             <span class="dashboard-search-icon absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" aria-hidden="true">🔍</span>
             <input type="search" id="dashboard-search" placeholder="Search..." class="dashboard-search-input w-full pl-9 pr-3 py-2 text-sm rounded-md border border-border bg-muted/50 focus:outline-none focus:ring-2 focus:ring-ring" />
           </div>
         </div>
-        <div class="flex items-center gap-2 flex-shrink-0 ml-auto">
+        <div class="flex items-center gap-1 md:gap-2 flex-shrink-0 ml-auto">
+          <a href="#" class="btn btn-primary btn-sm gap-1 md:gap-2 h-8 md:h-9 px-2 md:px-3 text-xs md:text-sm" title="Invite Team">👤 <span class="hidden sm:inline">Invite Team</span></a>
+          <button type="button" class="btn btn-ghost relative h-8 w-8 md:h-9 md:w-9 flex-shrink-0" aria-label="Notifications">
+            <span aria-hidden="true">🔔</span>
+            <span class="absolute -top-0.5 -right-0.5 h-2 w-2 bg-destructive rounded-full"></span>
+          </button>
           <button type="button" class="theme-toggle btn btn-ghost btn-sm" aria-label="Toggle theme"></button>
-          <span class="text-sm text-muted-foreground truncate max-w-[180px]" id="user-email" title="{{.UserEmail}}">{{.UserEmail}}</span>
-          <form method="post" action="/logout" class="inline">
-            <button type="submit" class="btn btn-ghost btn-sm">Sign out</button>
-          </form>
+          <div class="dashboard-user-dropdown relative">
+            <button type="button" class="dashboard-user-trigger btn btn-ghost h-8 w-8 md:h-9 md:w-9 rounded-full p-0 flex items-center justify-center bg-primary text-primary-foreground text-xs md:text-sm font-medium" aria-expanded="false" aria-haspopup="true" aria-label="User menu">{{.UserInitials}}</button>
+            <div class="dashboard-user-menu hidden absolute right-0 top-full mt-1 w-56 rounded-md border border-border bg-popover shadow-md py-1 z-50" role="menu">
+              <div class="px-3 py-2 border-b border-border">
+                <p class="text-sm font-medium truncate" id="user-email" title="{{.UserEmail}}">{{.UserEmail}}</p>
+              </div>
+              <a href="#" class="block px-3 py-2 text-sm hover:bg-muted/50" role="menuitem">⚙️ Settings</a>
+              <form method="post" action="/logout" class="block">
+                <button type="submit" class="w-full text-left px-3 py-2 text-sm text-destructive hover:bg-muted/50" role="menuitem">Sign out</button>
+              </form>
+            </div>
+          </div>
         </div>
       </header>
 
@@ -76,6 +89,31 @@
   var searchEl = document.getElementById('dashboard-search');
   var diagramsContainer = document.getElementById('dashboard-diagrams-container');
 
+  // Sidebar toggle (mobile)
+  var sidebar = document.querySelector('.dashboard-sidebar');
+  var sidebarTrigger = document.querySelector('.dashboard-sidebar-trigger');
+  if (sidebar && sidebarTrigger) {
+    sidebarTrigger.addEventListener('click', function() {
+      sidebar.classList.toggle('dashboard-sidebar-open');
+    });
+  }
+
+  // User dropdown
+  var userTrigger = document.querySelector('.dashboard-user-trigger');
+  var userMenu = document.querySelector('.dashboard-user-menu');
+  if (userTrigger && userMenu) {
+    userTrigger.addEventListener('click', function(e) {
+      e.stopPropagation();
+      var open = userMenu.classList.toggle('hidden');
+      userTrigger.setAttribute('aria-expanded', !open);
+    });
+    document.addEventListener('click', function() {
+      userMenu.classList.add('hidden');
+      userTrigger.setAttribute('aria-expanded', 'false');
+    });
+    userMenu.addEventListener('click', function(e) { e.stopPropagation(); });
+  }
+
   if (searchEl) {
     searchEl.addEventListener('input', function() {
       var q = searchEl.value.trim();
@@ -85,8 +123,30 @@
     });
   }
 
+  function bindCardMenus(container) {
+    if (!container) return;
+    container.querySelectorAll('.dashboard-card-menu-trigger').forEach(function(btn) {
+      btn.onclick = function(e) {
+        e.preventDefault();
+        e.stopPropagation();
+        var menu = btn.closest('.dashboard-card-actions').querySelector('.dashboard-card-menu');
+        var open = menu && menu.classList.toggle('hidden');
+        container.querySelectorAll('.dashboard-card-menu').forEach(function(m) {
+          if (m !== menu) m.classList.add('hidden');
+        });
+      };
+    });
+    document.addEventListener('click', function() {
+      container.querySelectorAll('.dashboard-card-menu').forEach(function(m) { m.classList.add('hidden'); });
+    });
+    container.querySelectorAll('.dashboard-card-actions').forEach(function(div) {
+      div.addEventListener('click', function(e) { e.preventDefault(); e.stopPropagation(); });
+    });
+  }
+
   document.body.addEventListener('htmx:afterSwap', function(ev) {
     if (ev.detail.target.id !== 'dashboard-diagrams-container') return;
+    bindCardMenus(ev.detail.target);
     document.querySelectorAll('.dashboard-delete').forEach(function(btn) {
       btn.onclick = function() {
         var id = btn.dataset.id;
@@ -118,6 +178,7 @@
         });
       };
     });
+    bindCardMenus(document.getElementById('dashboard-diagrams-container'));
   });
 })();
   </script>

@@ -2,6 +2,7 @@ package web
 
 import (
 	"context"
+	"fmt"
 	"net/http"
 	"os"
 	"path/filepath"
@@ -135,7 +136,7 @@ func (h *Handler) servePage(name string) gin.HandlerFunc {
 	}
 }
 
-// serveDashboard renders dashboard.html with UserEmail from context (set by requireAuthCookie).
+// serveDashboard renders dashboard.html with UserEmail, CurrentWorkspaceName, WorkspaceID, UserInitials from context/query.
 func (h *Handler) serveDashboard(c *gin.Context) {
 	name := "dashboard.html"
 	fpath := filepath.Join(h.staticDir, name)
@@ -154,9 +155,31 @@ func (h *Handler) serveDashboard(c *gin.Context) {
 		return
 	}
 	email, _ := c.Get("user_email")
-	data := map[string]string{"UserEmail": ""}
+	data := map[string]string{
+		"UserEmail":             "",
+		"CurrentWorkspaceName":  "Personal",
+		"WorkspaceID":           "",
+		"UserInitials":          "U",
+	}
 	if e, ok := email.(string); ok && e != "" {
 		data["UserEmail"] = e
+		if len(e) >= 2 {
+			data["UserInitials"] = strings.ToUpper(e[:2])
+		}
+	}
+	wsID := strings.TrimSpace(c.Query("workspace"))
+	if wsID != "" && h.wsLister != nil {
+		userID := h.getUserID(c)
+		list, err := h.wsLister.ListWorkspaces(c.Request.Context(), userID)
+		if err == nil {
+			for _, w := range list {
+				if w.ID.String() == wsID {
+					data["CurrentWorkspaceName"] = w.Name
+					break
+				}
+			}
+		}
+		data["WorkspaceID"] = wsID
 	}
 	var b strings.Builder
 	if err := tpl.Execute(&b, data); err != nil {
@@ -287,7 +310,7 @@ func (h *Handler) getUserID(c *gin.Context) uuid.UUID {
 	return id
 }
 
-// serveWorkspacesPartial returns HTML fragment of workspace list for dashboard sidebar.
+// serveWorkspacesPartial returns HTML fragment of workspace list for dashboard sidebar. Highlights current workspace when ?workspace= is set.
 func (h *Handler) serveWorkspacesPartial(c *gin.Context) {
 	userID := h.getUserID(c)
 	list, err := h.wsLister.ListWorkspaces(c.Request.Context(), userID)
@@ -295,9 +318,12 @@ func (h *Handler) serveWorkspacesPartial(c *gin.Context) {
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
-	tpl := template.Must(template.New("workspaces").Parse(partialWorkspacesHTML))
+	currentID := strings.TrimSpace(c.Query("workspace"))
+	tpl := template.Must(template.New("workspaces").Funcs(template.FuncMap{
+			"eqStr": func(a, b interface{}) bool { return fmt.Sprint(a) == strings.TrimSpace(fmt.Sprint(b)) },
+	}).Parse(partialWorkspacesHTML))
 	var b strings.Builder
-	if err := tpl.Execute(&b, map[string]interface{}{"Workspaces": list}); err != nil {
+	if err := tpl.Execute(&b, map[string]interface{}{"Workspaces": list, "CurrentWorkspaceID": currentID}); err != nil {
 		c.AbortWithStatus(http.StatusInternalServerError)
 		return
 	}
@@ -383,6 +409,13 @@ func (h *Handler) serveDiagramsPartial(c *gin.Context) {
 		list = filtered
 	}
 	// Sort by updated_at desc (recent first)
+	for i := 0; i < len(list); i++ {
+		for j := i + 1; j < len(list); j++ {
+			if list[j].UpdatedAt.After(list[i].UpdatedAt) {
+				list[i], list[j] = list[j], list[i]
+			}
+		}
+	}
 	type diagramWithTime struct {
 		diagrammodel.DiagramResponse
 		UpdatedAtFormatted string
@@ -517,74 +550,109 @@ const partialGalleryDiagramsHTML = `
 `
 
 const partialWorkspacesHTML = `
-<div id="dashboard-workspaces" class="space-y-1">
-  <p class="text-xs font-medium text-muted-foreground mb-2">Workspaces</p>
-  {{range .Workspaces}}
-  <a href="/dashboard?workspace={{.ID}}" class="block rounded-lg border border-border bg-card px-3 py-2 text-sm hover:bg-muted/50" style="text-decoration:none;color:inherit;">
-    <span class="font-medium">{{.Name}}</span>
-  </a>
-  {{end}}
-  <a href="/workspaces/new" class="block rounded-lg border border-dashed border-border px-3 py-2 text-sm text-muted-foreground hover:bg-muted/50" style="text-decoration:none;">+ Create workspace</a>
+<div id="dashboard-workspaces" class="sidebar-group">
+  <div class="sidebar-group-header flex items-center justify-between">
+    <span class="sidebar-group-label text-xs font-medium text-muted-foreground flex items-center gap-1">
+      <span class="sidebar-chevron inline-block transition-transform" style="width:0.75rem;height:0.75rem;">▶</span>
+      Workspaces
+    </span>
+    <a href="/workspaces/new" class="text-xs text-primary hover:underline" title="New Workspace">+</a>
+  </div>
+  <div class="sidebar-group-content mt-1 space-y-0.5">
+    {{range .Workspaces}}
+    <a href="/dashboard?workspace={{.ID}}" class="sidebar-item flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50 truncate {{if eqStr .ID .CurrentWorkspaceID}}sidebar-item-active bg-primary/10{{end}}" style="text-decoration:none;color:inherit;">
+      <span class="workspace-dot flex-shrink-0 rounded-sm" style="width:0.75rem;height:0.75rem;background-color:{{if .Color}}{{.Color}}{{else}}hsl(var(--primary)){{end}};"></span>
+      <span class="truncate">{{.Name}}</span>
+    </a>
+    {{end}}
+    <a href="/workspaces/new" class="sidebar-item flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted/50" style="text-decoration:none;">
+      <span class="flex-shrink-0" style="width:0.75rem;height:0.75rem;text-align:center;line-height:0.75rem;">+</span>
+      <span>New Workspace</span>
+    </a>
+  </div>
 </div>
 `
 
 const partialDashboardSidebarHTML = `
-<div id="dashboard-sidebar-nav" class="space-y-4">
-  <div>
-    <div class="flex items-center justify-between mb-1">
-      <p class="text-xs font-medium text-muted-foreground">Diagrams</p>
-      <a href="/editor" class="text-xs text-primary hover:underline">+</a>
-    </div>
-    <div class="space-y-0.5">
+<div id="dashboard-sidebar-nav" class="space-y-2">
+  <details class="sidebar-group" open>
+    <summary class="sidebar-group-header flex items-center justify-between cursor-pointer list-none">
+      <span class="sidebar-group-label text-xs font-medium text-muted-foreground flex items-center gap-1">
+        <span class="sidebar-chevron inline-block transition-transform" style="width:0.75rem;">▶</span>
+        Diagrams
+      </span>
+      <a href="/editor" class="text-xs text-primary hover:underline" title="New Diagram" onclick="event.stopPropagation()">+</a>
+    </summary>
+    <div class="sidebar-group-content mt-1 space-y-0.5">
       {{range .Diagrams}}
-      <a href="{{.EditorURL}}" class="block rounded-md px-2 py-1.5 text-sm truncate hover:bg-muted/50" style="text-decoration:none;color:inherit;">{{.Title}}</a>
+      <a href="{{.EditorURL}}" class="sidebar-item flex items-center gap-2 rounded-md px-2 py-1.5 text-sm truncate hover:bg-muted/50" style="text-decoration:none;color:inherit;">
+        <span class="sidebar-icon flex-shrink-0 text-muted-foreground" style="width:1rem;height:1rem;font-size:0.875rem;" aria-hidden="true">📄</span>
+        <span class="truncate">{{.Title}}</span>
+      </a>
       {{else}}
       <p class="px-2 py-1.5 text-xs text-muted-foreground">No diagrams yet</p>
       {{end}}
     </div>
-  </div>
-  <div>
-    <div class="flex items-center justify-between mb-1">
-      <p class="text-xs font-medium text-muted-foreground">Whiteboards</p>
-      <a href="/whiteboard" class="text-xs text-primary hover:underline">+</a>
-    </div>
-    <div class="space-y-0.5">
+  </details>
+  <details class="sidebar-group" open>
+    <summary class="sidebar-group-header flex items-center justify-between cursor-pointer list-none">
+      <span class="sidebar-group-label text-xs font-medium text-muted-foreground flex items-center gap-1">
+        <span class="sidebar-chevron inline-block transition-transform" style="width:0.75rem;">▶</span>
+        Whiteboards
+      </span>
+      <a href="/whiteboard" class="text-xs text-primary hover:underline" title="New Whiteboard" onclick="event.stopPropagation()">+</a>
+    </summary>
+    <div class="sidebar-group-content mt-1 space-y-0.5">
       {{range .Whiteboards}}
-      <a href="{{.EditorURL}}" class="block rounded-md px-2 py-1.5 text-sm truncate hover:bg-muted/50" style="text-decoration:none;color:inherit;">{{.Title}}</a>
+      <a href="{{.EditorURL}}" class="sidebar-item flex items-center gap-2 rounded-md px-2 py-1.5 text-sm truncate hover:bg-muted/50" style="text-decoration:none;color:inherit;">
+        <span class="sidebar-icon flex-shrink-0 text-muted-foreground" style="width:1rem;height:1rem;font-size:0.875rem;" aria-hidden="true">✏️</span>
+        <span class="truncate">{{.Title}}</span>
+      </a>
       {{else}}
       <p class="px-2 py-1.5 text-xs text-muted-foreground">No whiteboards yet</p>
       {{end}}
     </div>
-  </div>
-  <div>
-    <p class="text-xs font-medium text-muted-foreground mb-1">Recent</p>
-    <div class="space-y-0.5">
+  </details>
+  <details class="sidebar-group" open>
+    <summary class="sidebar-group-label text-xs font-medium text-muted-foreground flex items-center gap-1 cursor-pointer list-none px-0 py-1">
+      <span class="sidebar-chevron inline-block transition-transform" style="width:0.75rem;">▶</span>
+      Recent
+    </summary>
+    <div class="sidebar-group-content mt-1 space-y-0.5">
       {{range .Recent}}
-      <a href="{{.EditorURL}}" class="block rounded-md px-2 py-1.5 text-sm truncate hover:bg-muted/50" style="text-decoration:none;color:inherit;">{{.Title}}</a>
+      <a href="{{.EditorURL}}" class="sidebar-item flex items-center gap-2 rounded-md px-2 py-1.5 text-sm truncate hover:bg-muted/50" style="text-decoration:none;color:inherit;">
+        <span class="sidebar-icon flex-shrink-0 text-muted-foreground" style="width:1rem;height:1rem;font-size:0.875rem;" aria-hidden="true">🕐</span>
+        <span class="truncate">{{.Title}}</span>
+      </a>
       {{else}}
       <p class="px-2 py-1.5 text-xs text-muted-foreground">No recent items</p>
       {{end}}
     </div>
-  </div>
+  </details>
 </div>
 `
 
 const partialDiagramsHTML = `
 <div id="dashboard-diagrams" class="grid gap-4" style="display:grid;grid-template-columns:repeat(auto-fill,minmax(240px,1fr));gap:1rem;">
   {{range .Diagrams}}
-  <div class="dashboard-card rounded-xl border border-border bg-card p-4 shadow-sm hover:shadow-md transition-shadow group" data-diagram-id="{{.ID}}">
+  <a href="{{.EditorURL}}" class="dashboard-card rounded-xl border border-border bg-card p-4 shadow-sm hover:shadow-md hover:border-primary/50 transition-all block group" style="text-decoration:none;color:inherit;" data-diagram-id="{{.ID}}">
     <div class="flex items-start justify-between gap-2">
-      <h3 class="font-semibold text-base truncate flex-1" style="min-width:0;"><a href="{{.EditorURL}}" class="hover:underline" style="text-decoration:none;color:inherit;">{{.Title}}</a></h3>
-      <div class="dashboard-card-actions flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
-        <a href="{{.EditorURL}}" class="btn btn-ghost btn-sm" title="View">View</a>
-        <button type="button" class="dashboard-share btn btn-ghost btn-sm" data-id="{{.ID}}" title="Share">Share</button>
-        {{if .ImageURL}}
-        <a href="{{safeURL .ImageURL}}" download="{{.Title}}.png" class="btn btn-ghost btn-sm" title="Download">Download</a>
-        {{end}}
-        <button type="button" class="dashboard-delete btn btn-ghost btn-sm text-destructive" data-id="{{.ID}}" title="Delete">Delete</button>
+      <div class="flex-1 min-w-0">
+        <h3 class="font-semibold text-base truncate">{{.Title}}</h3>
+        <p class="text-xs text-muted-foreground mt-1">{{.DiagramType}} • {{.UpdatedAtFormatted}}</p>
+      </div>
+      <div class="dashboard-card-actions relative flex-shrink-0 opacity-0 group-hover:opacity-100 transition-opacity" onclick="event.preventDefault();event.stopPropagation();">
+        <button type="button" class="dashboard-card-menu-trigger btn btn-ghost h-8 w-8 p-0 rounded" aria-label="More actions">⋮</button>
+        <div class="dashboard-card-menu hidden absolute right-0 top-full mt-1 w-48 rounded-md border border-border bg-popover shadow-md py-1 z-10">
+          <a href="{{.EditorURL}}" class="block px-3 py-2 text-sm hover:bg-muted/50">View</a>
+          {{if .ImageURL}}
+          <a href="{{safeURL .ImageURL}}" download="{{.Title}}.png" class="block px-3 py-2 text-sm hover:bg-muted/50">Download</a>
+          {{end}}
+          <button type="button" class="dashboard-share w-full text-left px-3 py-2 text-sm hover:bg-muted/50" data-id="{{.ID}}">Share</button>
+          <button type="button" class="dashboard-delete w-full text-left px-3 py-2 text-sm text-destructive hover:bg-muted/50" data-id="{{.ID}}">Delete</button>
+        </div>
       </div>
     </div>
-    <p class="text-xs text-muted-foreground mt-1">{{.DiagramType}} • {{.UpdatedAtFormatted}}</p>
     <div class="mt-3 rounded-md bg-muted/50 h-24 flex items-center justify-center overflow-hidden" style="min-height:6rem;">
       {{if .ImageURL}}
       <img src="{{safeURL .ImageURL}}" alt="{{.Title}}" class="max-w-full max-h-full object-contain" />
@@ -592,7 +660,7 @@ const partialDiagramsHTML = `
       <span class="text-xs text-muted-foreground">No preview</span>
       {{end}}
     </div>
-  </div>
+  </a>
   {{else}}
   <div class="col-span-full rounded-xl border border-dashed border-border bg-card p-8 text-center" style="grid-column:1/-1;">
     <p class="text-muted-foreground mb-4">No diagrams yet. Create your first one!</p>
