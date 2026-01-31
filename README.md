@@ -2,6 +2,19 @@
 
 Backend and docs follow `docs/DWeaver Backend Project Requirements.pdf` and `AGENTS.md`.
 
+## Backend modules
+
+| # | Module      | Status   | Scope |
+|---|-------------|----------|--------|
+| 1 | **Auth**    | Done     | Register, login, logout, refresh, forgot-password, reset-password |
+| 2 | **Workspaces** | Done  | CRUD, members, invitations, accept |
+| 3 | **Diagrams** | Done   | CRUD, image upload (10MB), comments |
+| 4 | **AI**      | Done     | `POST /api/v1/ai/generate-diagram` |
+| 5 | **Real-time** | Done | WebSocket: `/ws/collaboration/:diagramId` (auth: `?token=` or `Authorization: Bearer`); join/leave/cursor/presence |
+
+- **Done**: All modules implemented, wired in app, OpenAPI spec at `/api-docs/<module>`.
+- **collaboration_sessions** migration (000009) for optional persistence; WebSocket hub is in-memory (single instance).
+
 ## Running the API
 
 From the repo root:

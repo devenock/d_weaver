@@ -19,6 +19,9 @@ var DiagramSpecYAML []byte
 //go:embed ai.yaml
 var AISpecYAML []byte
 
+//go:embed realtime.yaml
+var RealtimeSpecYAML []byte
+
 // ServeAuth writes the auth OpenAPI 3.0 spec (YAML) with content-type application/yaml.
 func ServeAuth(c *gin.Context) {
 	c.Data(http.StatusOK, "application/yaml", AuthSpecYAML)
@@ -37,4 +40,9 @@ func ServeDiagram(c *gin.Context) {
 // ServeAI writes the AI OpenAPI 3.0 spec (YAML) with content-type application/yaml.
 func ServeAI(c *gin.Context) {
 	c.Data(http.StatusOK, "application/yaml", AISpecYAML)
+}
+
+// ServeRealtime writes the realtime WebSocket OpenAPI 3.0 spec (YAML) with content-type application/yaml.
+func ServeRealtime(c *gin.Context) {
+	c.Data(http.StatusOK, "application/yaml", RealtimeSpecYAML)
 }

@@ -21,6 +21,7 @@ import (
 	diagramhandler "github.com/devenock/d_weaver/internal/diagram/handler"
 	diagramrepo "github.com/devenock/d_weaver/internal/diagram/repository"
 	diagramsvc "github.com/devenock/d_weaver/internal/diagram/service"
+	"github.com/devenock/d_weaver/internal/realtime"
 	workspacehandler "github.com/devenock/d_weaver/internal/workspace/handler"
 	workspacerepo "github.com/devenock/d_weaver/internal/workspace/repository"
 	workspacesvc "github.com/devenock/d_weaver/internal/workspace/service"
@@ -50,6 +51,7 @@ func New(cfg *config.Config) (*App, error) {
 	r.GET("/api-docs/workspace", docs.ServeWorkspace)
 	r.GET("/api-docs/diagram", docs.ServeDiagram)
 	r.GET("/api-docs/ai", docs.ServeAI)
+	r.GET("/api-docs/realtime", docs.ServeRealtime)
 	// Serve uploaded diagram images (PDF: 10MB limit enforced on upload)
 	if cfg.Upload.Dir != "" {
 		r.Static("/uploads", cfg.Upload.Dir)
@@ -85,6 +87,10 @@ func New(cfg *config.Config) (*App, error) {
 	aiSvc := aisvc.New(aiGen)
 	aiHandler := aihandler.New(aiSvc)
 	aiHandler.Register(v1, jwtIssuer)
+
+	realtimeHub := realtime.NewHub()
+	realtimeHandler := realtime.NewHandler(realtimeHub, jwtIssuer, diagramSvc)
+	r.GET("/ws/collaboration/:diagramId", realtimeHandler.ServeWS)
 
 	addr := fmt.Sprintf("%s:%d", cfg.Server.Host, cfg.Server.Port)
 	srv := &http.Server{

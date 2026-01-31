@@ -1,0 +1,49 @@
+openapi: 3.0.3
+info:
+  title: DWeaver Real-time API
+  description: WebSocket collaboration for diagrams (DWeaver Backend Project Requirements). Connect to /ws/collaboration/:diagramId with auth.
+  version: 1.0.0
+
+servers:
+  - url: /
+    description: API root (WebSocket path is absolute)
+
+tags:
+  - name: realtime
+    description: WebSocket collaboration
+
+paths:
+  /ws/collaboration/{diagramId}:
+    get:
+      tags: [realtime]
+      summary: WebSocket collaboration
+      description: |
+        Upgrade to WebSocket for real-time collaboration on a diagram.
+        Auth: query param `?token=<access_token>` or header `Authorization: Bearer <access_token>`.
+        Message types (JSON): `join` (user joined), `leave` (user left), `cursor` (cursor position), `presence` (list of users in room).
+        Client can send `{"type":"cursor","position":{...}}` to broadcast cursor.
+      operationId: wsCollaboration
+      parameters:
+        - name: diagramId
+          in: path
+          required: true
+          schema:
+            type: string
+            format: uuid
+        - name: token
+          in: query
+          required: false
+          description: JWT access token (alternative to Authorization header)
+          schema:
+            type: string
+      responses:
+        '101':
+          description: Switching Protocols (WebSocket)
+        '400':
+          description: Invalid diagram ID
+        '401':
+          description: Missing or invalid token
+        '403':
+          description: No access to diagram
+        '404':
+          description: Diagram not found

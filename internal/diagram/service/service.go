@@ -96,6 +96,18 @@ func (s *Service) CreateDiagram(ctx context.Context, userID uuid.UUID, workspace
 	return model.FromDiagram(d), nil
 }
 
+// CheckDiagramAccess returns nil if the user can access the diagram (for WebSocket join).
+func (s *Service) CheckDiagramAccess(ctx context.Context, diagramID, userID uuid.UUID) error {
+	d, err := s.repo.GetByID(ctx, diagramID)
+	if err != nil {
+		return common.NewDomainError(common.CodeInternalError, "Failed to get diagram.", err)
+	}
+	if d == nil {
+		return common.NewDomainError(common.CodeNotFound, "Diagram not found.", nil)
+	}
+	return s.canAccessDiagram(ctx, d, userID)
+}
+
 // GetDiagram returns a diagram if the user has access.
 func (s *Service) GetDiagram(ctx context.Context, id, userID uuid.UUID) (model.DiagramResponse, error) {
 	d, err := s.repo.GetByID(ctx, id)
