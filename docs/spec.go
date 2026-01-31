@@ -7,6 +7,9 @@ import (
 	"github.com/gin-gonic/gin"
 )
 
+//go:embed swagger.html
+var SwaggerHTML []byte
+
 //go:embed auth.yaml
 var AuthSpecYAML []byte
 
@@ -45,4 +48,9 @@ func ServeAI(c *gin.Context) {
 // ServeRealtime writes the realtime WebSocket OpenAPI 3.0 spec (YAML) with content-type application/yaml.
 func ServeRealtime(c *gin.Context) {
 	c.Data(http.StatusOK, "application/yaml", RealtimeSpecYAML)
+}
+
+// ServeSwagger writes the interactive Swagger UI page (HTML) for trying endpoints.
+func ServeSwagger(c *gin.Context) {
+	c.Data(http.StatusOK, "text/html; charset=utf-8", SwaggerHTML)
 }

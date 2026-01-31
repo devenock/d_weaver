@@ -1,0 +1,75 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>DWeaver API — Swagger</title>
+  <link rel="stylesheet" href="https://unpkg.com/swagger-ui-dist@5/swagger-ui.css">
+  <style>
+    body { margin: 0; }
+    .swagger-module-bar {
+      background: #1b1b1b;
+      color: #fff;
+      padding: 12px 24px;
+      display: flex;
+      align-items: center;
+      gap: 16px;
+      font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    }
+    .swagger-module-bar label { font-weight: 600; }
+    .swagger-module-bar select {
+      padding: 6px 12px;
+      font-size: 14px;
+      border-radius: 4px;
+      min-width: 160px;
+    }
+    .swagger-module-bar a {
+      color: #89bf04;
+      text-decoration: none;
+    }
+    .swagger-module-bar a:hover { text-decoration: underline; }
+  </style>
+</head>
+<body>
+  <div class="swagger-module-bar">
+    <label for="module">Module:</label>
+    <select id="module">
+      <option value="auth">Auth</option>
+      <option value="workspace">Workspaces</option>
+      <option value="diagram">Diagrams</option>
+      <option value="ai">AI</option>
+      <option value="realtime">Real-time</option>
+    </select>
+    <a href="/health" target="_blank">Health</a>
+    <a href="/ready" target="_blank">Ready</a>
+  </div>
+  <div id="swagger-ui"></div>
+  <script src="https://unpkg.com/swagger-ui-dist@5/swagger-ui-bundle.js"></script>
+  <script>
+    (function() {
+      var params = new URLSearchParams(window.location.search);
+      var module = params.get('module') || 'auth';
+      var valid = ['auth','workspace','diagram','ai','realtime'];
+      if (valid.indexOf(module) === -1) module = 'auth';
+      document.getElementById('module').value = module;
+
+      var specUrl = '/api-docs/' + module;
+      window.ui = SwaggerUIBundle({
+        url: specUrl,
+        dom_id: '#swagger-ui',
+        deepLinking: true,
+        presets: [
+          SwaggerUIBundle.presets.apis,
+          SwaggerUIBundle.SwaggerUIStandalonePreset
+        ],
+        layout: 'BaseLayout'
+      });
+
+      document.getElementById('module').addEventListener('change', function() {
+        var m = this.value;
+        window.location.search = 'module=' + m;
+      });
+    })();
+  </script>
+</body>
+</html>

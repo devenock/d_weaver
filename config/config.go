@@ -2,6 +2,7 @@ package config
 
 import (
 	"fmt"
+	"os"
 	"strings"
 
 	"github.com/spf13/viper"
@@ -84,6 +85,9 @@ func Load() (*Config, error) {
 	v := viper.New()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
+	// Unmarshal does not apply AutomaticEnv to nested keys; bind so Docker/env DB_URL is used.
+	v.BindEnv("db.url", "DB_URL")
+	v.BindEnv("redis.url", "REDIS_URL")
 
 	// defaults
 	v.SetDefault("server.host", "0.0.0.0")
@@ -127,6 +131,13 @@ func Load() (*Config, error) {
 	var c Config
 	if err := v.Unmarshal(&c); err != nil {
 		return nil, fmt.Errorf("config: unmarshal: %w", err)
+	}
+	// Viper Unmarshal does not always apply bound env for nested keys; override from env so Docker/compose DB_URL is used.
+	if u := os.Getenv("DB_URL"); u != "" {
+		c.DB.URL = u
+	}
+	if u := os.Getenv("REDIS_URL"); u != "" {
+		c.Redis.URL = u
 	}
 	return &c, nil
 }

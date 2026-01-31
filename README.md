@@ -14,7 +14,8 @@ Backend and docs follow `docs/DWeaver Backend Project Requirements.pdf` and `AGE
 | 4 | **AI**       | Done   | `POST /api/v1/ai/generate-diagram` |
 | 5 | **Real-time** | Done | WebSocket: `/ws/collaboration/:diagramId` |
 
-OpenAPI specs: `GET /api-docs/auth`, `/api-docs/workspace`, `/api-docs/diagram`, `/api-docs/ai`, `/api-docs/realtime`.
+OpenAPI specs (raw YAML): `GET /api-docs/auth`, `/api-docs/workspace`, `/api-docs/diagram`, `/api-docs/ai`, `/api-docs/realtime`.  
+**Interactive docs (Swagger UI):** `GET /swagger` or `GET /docs` — **must use the API base URL** (e.g. **http://localhost:8200/swagger**). Do not use the frontend port (3000); Swagger is served by the API only.
 
 ---
 
@@ -113,7 +114,8 @@ go run ./cmd/api
 Migrations run automatically on startup when `DB_URL` is set and the `migrations` directory exists. Or run manually: `make migrate` (requires `migrate` CLI and `DB_URL`).
 
 - Health: `GET /health`, `GET /ready`
-- OpenAPI: `GET /api-docs/{auth,workspace,diagram,ai,realtime}`
+- OpenAPI (raw): `GET /api-docs/{auth,workspace,diagram,ai,realtime}`
+- **Swagger UI (interactive):** `GET /swagger` or `GET /docs` at the API origin (e.g. `http://localhost:8200/swagger`)
 
 ---
 

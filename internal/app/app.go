@@ -48,11 +48,23 @@ func New(cfg *config.Config, log pkglogger.Logger) (*App, error) {
 	r := gin.New()
 	r.Use(gin.Recovery())
 
-	// CORS (from config)
+	// CORS (from config). Fallback to allow all origins if empty (e.g. env JSON not parsed).
+	allowOrigins := cfg.CORS.AllowedOrigins
+	if len(allowOrigins) == 0 {
+		allowOrigins = []string{"*"}
+	}
+	allowMethods := cfg.CORS.AllowedMethods
+	if len(allowMethods) == 0 {
+		allowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
+	}
+	allowHeaders := cfg.CORS.AllowedHeaders
+	if len(allowHeaders) == 0 {
+		allowHeaders = []string{"Authorization", "Content-Type", "X-Request-ID"}
+	}
 	corsConfig := cors.Config{
-		AllowOrigins:     cfg.CORS.AllowedOrigins,
-		AllowMethods:     cfg.CORS.AllowedMethods,
-		AllowHeaders:     cfg.CORS.AllowedHeaders,
+		AllowOrigins:     allowOrigins,
+		AllowMethods:     allowMethods,
+		AllowHeaders:     allowHeaders,
 		AllowCredentials: false,
 		ExposeHeaders:    []string{"X-Request-ID"},
 	}
@@ -75,6 +87,11 @@ func New(cfg *config.Config, log pkglogger.Logger) (*App, error) {
 	r.GET("/api-docs/diagram", docs.ServeDiagram)
 	r.GET("/api-docs/ai", docs.ServeAI)
 	r.GET("/api-docs/realtime", docs.ServeRealtime)
+	// Interactive Swagger UI — use API port (e.g. http://localhost:8200/swagger), not the frontend port
+	r.GET("/swagger", docs.ServeSwagger)
+	r.GET("/swagger/", docs.ServeSwagger)
+	r.GET("/docs", docs.ServeSwagger)
+	r.GET("/docs/", docs.ServeSwagger)
 	// Serve uploaded diagram images (PDF: 10MB limit enforced on upload)
 	if cfg.Upload.Dir != "" {
 		r.Static("/uploads", cfg.Upload.Dir)
