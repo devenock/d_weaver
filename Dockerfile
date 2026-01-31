@@ -18,8 +18,9 @@ RUN apk add --no-cache ca-certificates tzdata
 
 COPY --from=builder /build/api .
 COPY migrations ./migrations
+COPY --from=builder /build/web/static ./web/static
 
 ENV DB_MIGRATIONS_DIR=/app/migrations
-EXPOSE 8080
+EXPOSE 8200
 
 ENTRYPOINT ["./api"]

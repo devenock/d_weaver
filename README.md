@@ -91,6 +91,7 @@ All other routes below require `Authorization: Bearer <access_token>`.
 | `RATE_LIMIT_REQUESTS_PER_MINUTE` | No | `100` | Max requests per minute per key (user or IP) |
 | `RATE_LIMIT_ENABLED` | No | `true` | Set false to disable rate limiting |
 | `CORS_ALLOWED_ORIGINS` | No | `*` | Comma or list; restrict in production |
+| `WEB_STATIC_DIR` | No | `web/static` | Directory for htmx static UI; empty disables UI routes |
 
 Optional: `config.yaml` or `config/config.yaml` (viper); env overrides file.
 
@@ -117,10 +118,71 @@ Migrations run automatically on startup when `DB_URL` is set and the `migrations
 - OpenAPI (raw): `GET /api-docs/{auth,workspace,diagram,ai,realtime}`
 - **Swagger UI (interactive):** `GET /swagger` or `GET /docs` at the API origin (e.g. `http://localhost:8200/swagger`)
 
+---
+
+## Static UI (htmx frontend)
+
+The API serves an **htmx-based static UI** from `web/static` when `web.static_dir` is set (default: `web/static`). No separate frontend server is required for this UI.
+
+### Run the static UI locally
+
+1. Start Postgres (and optionally Redis): `make docker-up` (or only postgres/redis).
+2. Run the API from the repo root:
+
+   ```bash
+   go run ./cmd/api
+   ```
+
+3. Open in the browser: **http://localhost:8200**
+
+   You get the same origin as the API: login, signup, dashboard, editor, whiteboard, gallery, etc. Auth uses an HTTP-only cookie; no CORS issues.
+
+- **Home:** `http://localhost:8200/`
+- **Sign in:** `http://localhost:8200/login`
+- **Dashboard:** `http://localhost:8200/dashboard` (after login)
+- **Editor (Mermaid):** `http://localhost:8200/editor`
+- **Whiteboard (Fabric.js):** `http://localhost:8200/whiteboard`
+- **Gallery:** `http://localhost:8200/gallery`
+- **Create workspace:** `http://localhost:8200/workspaces/new`
+- **Join workspace:** `http://localhost:8200/join-workspace?token=<invitation-uuid>`
+- **Forgot / reset password:** `http://localhost:8200/forgot-password`, `http://localhost:8200/reset-password?token=...`
+- **Swagger (API docs):** `http://localhost:8200/swagger`
+
+Config: set `WEB_STATIC_DIR` to override the static directory (e.g. in production use an absolute path). Default `web/static` is relative to the process working directory.
+
+### Run the static UI in a container
+
+The API Docker image includes `web/static`. Use the same stack as above; the API container serves the static UI on port **8200**.
+
+```bash
+# From repo root: start full stack (API + static UI on 8200, Postgres, Redis, optional React client on 3000)
+make docker-up
+```
+
+Then open **http://localhost:8200** in the browser. The API container has `web/static` copied in at build time, so `/`, `/login`, `/dashboard`, `/editor`, etc. are served by the API.
+
+- To **rebuild** the API image (e.g. after changing `web/static`): `make docker-rebuild`.
+- To **only start** Postgres/Redis and run the API locally (so you can edit static files without rebuilding):  
+  `make docker-up` then stop the `api` and `client` services, and run `go run ./cmd/api` on the host. Then use **http://localhost:8200** for the static UI.
+
+### Interacting with the UI from here
+
+| Goal | What to do |
+|------|------------|
+| **Use the app** | Open **http://localhost:8200** (or your API base URL). Sign up or sign in, then use Dashboard, Editor, Whiteboard, Gallery. |
+| **Develop the static UI** | Run the API locally (`go run ./cmd/api`) so `web/static` is live. Edit files in `web/static/` (HTML, `css/site.css`, `js/theme.js`); refresh the browser. No build step. |
+| **Test in Docker** | `make docker-up`, open http://localhost:8200. After changing `web/static`, run `make docker-rebuild` so the API image includes the new files. |
+| **API-only (no UI)** | Leave `web.static_dir` empty or set `WEB_STATIC_DIR=` so the web handler does not register; only API and Swagger are served. |
+| **Swagger / API docs** | Always at the API origin: **http://localhost:8200/swagger** (not the React client port). |
+
+The React client in `web/client` remains available: `make client-dev` (port 5173) or the `client` container (port 3000). It is a separate frontend; the static UI is an alternative that the API serves directly.
+
+---
+
 ### Docker full stack
 
-- **`make docker-up`** — API on **8200**, client app on **3000**, Postgres 5432, Redis 6379. The *client* container serves the built frontend on port 3000.
-- **`make client-dev`** — Run the Vite dev server locally (default port **5173**). Use this when developing the frontend; set `VITE_API_URL=http://localhost:8200` so it talks to the API. Swagger is always on the API: **http://localhost:8200/swagger**.
+- **`make docker-up`** — API (with static UI) on **8200**, React client on **3000**, Postgres 5432, Redis 6379.
+- **`make client-dev`** — Run the Vite dev server locally (port **5173**) for the React frontend; set `VITE_API_URL=http://localhost:8200` to use the API. Swagger is on the API: **http://localhost:8200/swagger**.
 - **`make docker-rebuild`** — Rebuild images (no cache) and start. **`make docker-restart`** — Restart containers. **`make docker-logs`** (or `docker-logs-api`, `docker-logs-client`) — View logs.
 
 ---

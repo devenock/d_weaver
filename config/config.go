@@ -146,5 +146,8 @@ func Load() (*Config, error) {
 	if u := os.Getenv("REDIS_URL"); u != "" {
 		c.Redis.URL = u
 	}
+	if d := os.Getenv("WEB_STATIC_DIR"); d != "" {
+		c.Web.StaticDir = d
+	}
 	return &c, nil
 }
