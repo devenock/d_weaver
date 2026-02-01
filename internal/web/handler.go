@@ -155,11 +155,19 @@ func (h *Handler) serveDashboard(c *gin.Context) {
 		return
 	}
 	email, _ := c.Get("user_email")
+	view := strings.TrimSpace(strings.ToLower(c.Query("view")))
+	if view != "editor" && view != "whiteboard" {
+		view = "list"
+	}
+	diagramID := strings.TrimSpace(c.Query("id"))
+
 	data := map[string]string{
 		"UserEmail":             "",
 		"CurrentWorkspaceName":  "Personal",
 		"WorkspaceID":           "",
 		"UserInitials":          "U",
+		"ViewMode":              view,
+		"DiagramID":             diagramID,
 	}
 	if e, ok := email.(string); ok && e != "" {
 		data["UserEmail"] = e
@@ -353,9 +361,9 @@ func (h *Handler) serveDashboardSidebarPartial(c *gin.Context) {
 	}
 	var diagrams, whiteboards, recent []sideItem
 	for i := range list {
-		url := "/editor?id=" + list[i].ID.String()
+		url := "/dashboard?view=editor&id=" + list[i].ID.String()
 		if list[i].DiagramType == "whiteboard" {
-			url = "/whiteboard?id=" + list[i].ID.String()
+			url = "/dashboard?view=whiteboard&id=" + list[i].ID.String()
 		}
 		item := sideItem{ID: list[i].ID.String(), Title: list[i].Title, EditorURL: url}
 		if list[i].DiagramType == "whiteboard" {
@@ -365,9 +373,9 @@ func (h *Handler) serveDashboardSidebarPartial(c *gin.Context) {
 		}
 	}
 	for i := 0; i < len(list) && i < 5; i++ {
-		url := "/editor?id=" + list[i].ID.String()
+		url := "/dashboard?view=editor&id=" + list[i].ID.String()
 		if list[i].DiagramType == "whiteboard" {
-			url = "/whiteboard?id=" + list[i].ID.String()
+			url = "/dashboard?view=whiteboard&id=" + list[i].ID.String()
 		}
 		recent = append(recent, sideItem{ID: list[i].ID.String(), Title: list[i].Title, EditorURL: url})
 	}
@@ -426,10 +434,10 @@ func (h *Handler) serveDiagramsPartial(c *gin.Context) {
 		items[i] = diagramWithTime{
 			DiagramResponse:    list[i],
 			UpdatedAtFormatted: list[i].UpdatedAt.Format("Jan 2, 2006"),
-			EditorURL:          "/editor?id=" + list[i].ID.String(),
+			EditorURL:          "/dashboard?view=editor&id=" + list[i].ID.String(),
 		}
 		if list[i].DiagramType == "whiteboard" {
-			items[i].EditorURL = "/whiteboard?id=" + list[i].ID.String()
+			items[i].EditorURL = "/dashboard?view=whiteboard&id=" + list[i].ID.String()
 		}
 	}
 	tpl := template.Must(template.New("diagrams").Funcs(template.FuncMap{
@@ -543,7 +551,7 @@ const partialGalleryDiagramsHTML = `
   {{else}}
   <div class="col-span-full rounded-xl border border-dashed border-border bg-card p-8 text-center" style="grid-column:1/-1;">
     <p class="text-muted-foreground mb-4">No diagrams match.</p>
-    <a href="/editor" class="btn btn-primary">New Diagram</a>
+    <a href="/dashboard?view=editor" class="btn btn-primary">New Diagram</a>
   </div>
   {{end}}
 </div>
@@ -560,10 +568,15 @@ const partialWorkspacesHTML = `
   </div>
   <div class="sidebar-group-content mt-1 space-y-0.5">
     {{range .Workspaces}}
-    <a href="/dashboard?workspace={{.ID}}" class="sidebar-item flex items-center gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50 truncate {{if eqStr .ID .CurrentWorkspaceID}}sidebar-item-active bg-primary/10{{end}}" style="text-decoration:none;color:inherit;">
-      <span class="workspace-dot flex-shrink-0 rounded-sm" style="width:0.75rem;height:0.75rem;background-color:{{if .Color}}{{.Color}}{{else}}hsl(var(--primary)){{end}};"></span>
-      <span class="truncate">{{.Name}}</span>
-    </a>
+    <div class="sidebar-item group flex items-center justify-between gap-2 rounded-md px-2 py-1.5 text-sm hover:bg-muted/50 {{if eqStr .ID .CurrentWorkspaceID}}sidebar-item-active bg-primary/10{{end}}">
+      <a href="/dashboard?workspace={{.ID}}" class="flex items-center gap-2 min-w-0 flex-1 truncate" style="text-decoration:none;color:inherit;">
+        <span class="workspace-dot flex-shrink-0 rounded-sm" style="width:0.75rem;height:0.75rem;background-color:{{if .Color}}{{.Color}}{{else}}hsl(var(--primary)){{end}};"></span>
+        <span class="truncate">{{.Name}}</span>
+      </a>
+      {{if eqStr .ID .CurrentWorkspaceID}}
+      <a href="/workspaces/{{.ID}}/settings" class="opacity-0 group-hover:opacity-100 flex-shrink-0 p-1 rounded hover:bg-muted/50 transition-opacity h-5 w-5 flex items-center justify-center" title="Workspace settings" style="text-decoration:none;color:inherit;"><svg xmlns="http://www.w3.org/2000/svg" width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2z"/><circle cx="12" cy="12" r="3"/></svg></a>
+      {{end}}
+    </div>
     {{end}}
     <a href="/workspaces/new" class="sidebar-item flex items-center gap-2 rounded-md px-2 py-1.5 text-sm text-muted-foreground hover:bg-muted/50" style="text-decoration:none;">
       <span class="flex-shrink-0" style="width:0.75rem;height:0.75rem;text-align:center;line-height:0.75rem;">+</span>
@@ -578,15 +591,15 @@ const partialDashboardSidebarHTML = `
   <details class="sidebar-group" open>
     <summary class="sidebar-group-header flex items-center justify-between cursor-pointer list-none">
       <span class="sidebar-group-label text-xs font-medium text-muted-foreground flex items-center gap-1">
-        <span class="sidebar-chevron inline-block transition-transform" style="width:0.75rem;">▶</span>
+        <span class="sidebar-chevron inline-block transition-transform" style="width:0.75rem;height:0.75rem;">▶</span>
         Diagrams
       </span>
-      <a href="/editor" class="text-xs text-primary hover:underline" title="New Diagram" onclick="event.stopPropagation()">+</a>
+      <a href="/dashboard?view=editor" class="text-xs text-primary hover:underline" title="New Diagram" onclick="event.stopPropagation()">+</a>
     </summary>
     <div class="sidebar-group-content mt-1 space-y-0.5">
       {{range .Diagrams}}
       <a href="{{.EditorURL}}" class="sidebar-item flex items-center gap-2 rounded-md px-2 py-1.5 text-sm truncate hover:bg-muted/50" style="text-decoration:none;color:inherit;">
-        <span class="sidebar-icon flex-shrink-0 text-muted-foreground" style="width:1rem;height:1rem;font-size:0.875rem;" aria-hidden="true">📄</span>
+        <span class="sidebar-icon flex-shrink-0 text-muted-foreground" style="width:1rem;height:1rem;" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M14.5 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V7.5L14.5 2z"/><polyline points="14 2 14 8 20 8"/><line x1="16" y1="13" x2="8" y2="13"/><line x1="16" y1="17" x2="8" y2="17"/><line x1="10" y1="9" x2="8" y2="9"/></svg></span>
         <span class="truncate">{{.Title}}</span>
       </a>
       {{else}}
@@ -594,18 +607,19 @@ const partialDashboardSidebarHTML = `
       {{end}}
     </div>
   </details>
+  <hr class="dashboard-sidebar-separator border-0" />
   <details class="sidebar-group" open>
     <summary class="sidebar-group-header flex items-center justify-between cursor-pointer list-none">
       <span class="sidebar-group-label text-xs font-medium text-muted-foreground flex items-center gap-1">
-        <span class="sidebar-chevron inline-block transition-transform" style="width:0.75rem;">▶</span>
+        <span class="sidebar-chevron inline-block transition-transform" style="width:0.75rem;height:0.75rem;">▶</span>
         Whiteboards
       </span>
-      <a href="/whiteboard" class="text-xs text-primary hover:underline" title="New Whiteboard" onclick="event.stopPropagation()">+</a>
+      <a href="/dashboard?view=whiteboard" class="text-xs text-primary hover:underline" title="New Whiteboard" onclick="event.stopPropagation()">+</a>
     </summary>
     <div class="sidebar-group-content mt-1 space-y-0.5">
       {{range .Whiteboards}}
       <a href="{{.EditorURL}}" class="sidebar-item flex items-center gap-2 rounded-md px-2 py-1.5 text-sm truncate hover:bg-muted/50" style="text-decoration:none;color:inherit;">
-        <span class="sidebar-icon flex-shrink-0 text-muted-foreground" style="width:1rem;height:1rem;font-size:0.875rem;" aria-hidden="true">✏️</span>
+        <span class="sidebar-icon flex-shrink-0 text-muted-foreground" style="width:1rem;height:1rem;" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 19l7-7 3 3-7 7-3-3z"/><path d="M18 13l-1.5-7.5L2 2l3.5 14.5L13 18l5-5z"/><path d="m2 2 7.586 7.586"/><circle cx="11" cy="11" r="2"/></svg></span>
         <span class="truncate">{{.Title}}</span>
       </a>
       {{else}}
@@ -613,15 +627,16 @@ const partialDashboardSidebarHTML = `
       {{end}}
     </div>
   </details>
+  <hr class="dashboard-sidebar-separator border-0" />
   <details class="sidebar-group" open>
     <summary class="sidebar-group-label text-xs font-medium text-muted-foreground flex items-center gap-1 cursor-pointer list-none px-0 py-1">
-      <span class="sidebar-chevron inline-block transition-transform" style="width:0.75rem;">▶</span>
+      <span class="sidebar-chevron inline-block transition-transform" style="width:0.75rem;height:0.75rem;">▶</span>
       Recent
     </summary>
     <div class="sidebar-group-content mt-1 space-y-0.5">
       {{range .Recent}}
       <a href="{{.EditorURL}}" class="sidebar-item flex items-center gap-2 rounded-md px-2 py-1.5 text-sm truncate hover:bg-muted/50" style="text-decoration:none;color:inherit;">
-        <span class="sidebar-icon flex-shrink-0 text-muted-foreground" style="width:1rem;height:1rem;font-size:0.875rem;" aria-hidden="true">🕐</span>
+        <span class="sidebar-icon flex-shrink-0 text-muted-foreground" style="width:1rem;height:1rem;" aria-hidden="true"><svg xmlns="http://www.w3.org/2000/svg" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg></span>
         <span class="truncate">{{.Title}}</span>
       </a>
       {{else}}

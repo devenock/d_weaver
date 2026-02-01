@@ -306,6 +306,25 @@ details[open] .sidebar-chevron { transform: rotate(90deg); }
 .sidebar-group summary::-webkit-details-marker { display: none; }
 .bg-primary\/10 { background-color: hsl(var(--primary) / 0.1); }
 
+/* Dashboard header/sidebar parity with React (exact sizes) */
+.h-9 { height: 2.25rem; }
+.h-10 { height: 2.5rem; }
+@media (min-width: 768px) { .md\:h-9 { height: 2.25rem; } .md\:h-10 { height: 2.5rem; } }
+.pl-8 { padding-left: 2rem; }
+.pl-10 { padding-left: 2.5rem; }
+@media (min-width: 768px) { .md\:pl-10 { padding-left: 2.5rem; } }
+.text-\[10px\] { font-size: 10px; }
+@media (min-width: 768px) { .md\:text-xs { font-size: 0.75rem; } }
+.left-2\.5 { left: 0.625rem; }
+.left-3 { left: 0.75rem; }
+@media (min-width: 768px) { .md\:left-3 { left: 0.75rem; } }
+.-translate-y-1\/2 { transform: translateY(-50%); }
+.dashboard-header { supports-backdrop-filter: blur(8px); }
+@supports (backdrop-filter: blur(8px)) or (-webkit-backdrop-filter: blur(8px)) {
+  .dashboard-header { background-color: hsl(var(--background) / 0.6); }
+}
+.dashboard-sidebar-separator { height: 1px; background-color: hsl(var(--border)); margin: 0.5rem 0; }
+
 /* Landing page: uniform background, modern layout, sleek hero CTAs */
 .landing-section {
   background-color: hsl(var(--background));
