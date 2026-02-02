@@ -22,9 +22,9 @@ type Config struct {
 	Web       WebConfig       `mapstructure:"web"`
 }
 
-// WebConfig for serving the htmx static frontend.
+// WebConfig optional; e.g. for serving a built frontend (not used when using React dev server).
 type WebConfig struct {
-	StaticDir string `mapstructure:"static_dir"` // e.g. web/static
+	StaticDir string `mapstructure:"static_dir"`
 }
 
 // LogConfig for application logging.
@@ -121,7 +121,6 @@ func Load() (*Config, error) {
 	v.SetDefault("ai.base_url", "https://ai.gateway.lovable.dev/v1")
 	v.SetDefault("ai.model", "google/gemini-2.5-flash")
 	v.SetDefault("log.level", "info")
-	v.SetDefault("web.static_dir", "web/static")
 
 	v.SetConfigName("config")
 	v.SetConfigType("yaml")
@@ -145,9 +144,6 @@ func Load() (*Config, error) {
 	}
 	if u := os.Getenv("REDIS_URL"); u != "" {
 		c.Redis.URL = u
-	}
-	if d := os.Getenv("WEB_STATIC_DIR"); d != "" {
-		c.Web.StaticDir = d
 	}
 	return &c, nil
 }
