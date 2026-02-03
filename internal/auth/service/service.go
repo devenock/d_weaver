@@ -9,6 +9,7 @@ import (
 	"github.com/devenock/d_weaver/internal/auth/model"
 	"github.com/devenock/d_weaver/internal/common"
 	"github.com/devenock/d_weaver/pkg/database"
+	"github.com/devenock/d_weaver/pkg/logger"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -41,13 +42,15 @@ type Service struct {
 	passwordResetBaseURL    string
 	passwordResetReturnLink bool
 	passwordResetSender     PasswordResetSender
+	log                     logger.Logger // optional; when set, send failures are logged
 }
 
 // New returns an auth service that uses the given repository and JWT issuer.
 // passwordResetBaseURL and passwordResetReturnLink are optional: when both set, ForgotPassword
 // can return a reset link in the response (e.g. for dev when email is not configured).
 // passwordResetSender is optional: when set, ForgotPassword sends the reset link by email (e.g. via Resend).
-func New(repo Repository, jwtIssuer *jwt.Issuer, accessMinutes, refreshDays int, passwordResetBaseURL string, passwordResetReturnLink bool, passwordResetSender PasswordResetSender) *Service {
+// log is optional; when set, password reset email send failures are logged (no PII).
+func New(repo Repository, jwtIssuer *jwt.Issuer, accessMinutes, refreshDays int, passwordResetBaseURL string, passwordResetReturnLink bool, passwordResetSender PasswordResetSender, log logger.Logger) *Service {
 	return &Service{
 		repo:                    repo,
 		jwt:                     jwtIssuer,
@@ -56,6 +59,7 @@ func New(repo Repository, jwtIssuer *jwt.Issuer, accessMinutes, refreshDays int,
 		passwordResetBaseURL:    strings.TrimSuffix(passwordResetBaseURL, "/"),
 		passwordResetReturnLink: passwordResetReturnLink && passwordResetBaseURL != "",
 		passwordResetSender:     passwordResetSender,
+		log:                     log,
 	}
 }
 
@@ -227,7 +231,9 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) (*ForgotPass
 		resetLink = s.passwordResetBaseURL + "/reset-password?token=" + plain
 	}
 	if s.passwordResetSender != nil && resetLink != "" {
-		_ = s.passwordResetSender.SendPasswordReset(u.Email, resetLink)
+		if err := s.passwordResetSender.SendPasswordReset(u.Email, resetLink); err != nil && s.log != nil {
+			s.log.Error().Err(err).Str("user_id", u.ID.String()).Msg("password reset email send failed")
+		}
 	}
 	var result *ForgotPasswordResult
 	if s.passwordResetReturnLink && resetLink != "" {

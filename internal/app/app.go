@@ -137,7 +137,7 @@ func New(cfg *config.Config, log pkglogger.Logger) (*App, error) {
 	if cfg.PasswordReset.ResendAPIKey != "" && cfg.PasswordReset.FromEmail != "" {
 		passwordResetSender = authemail.NewResendSender(cfg.PasswordReset.ResendAPIKey, cfg.PasswordReset.FromEmail)
 	}
-	authSvc := authsvc.New(authRepo, jwtIssuer, cfg.JWT.AccessDurationMinutes, cfg.JWT.RefreshDurationDays, cfg.PasswordReset.BaseURL, cfg.PasswordReset.ReturnLinkInResponse, passwordResetSender)
+	authSvc := authsvc.New(authRepo, jwtIssuer, cfg.JWT.AccessDurationMinutes, cfg.JWT.RefreshDurationDays, cfg.PasswordReset.BaseURL, cfg.PasswordReset.ReturnLinkInResponse, passwordResetSender, log)
 	authHandler := handler.New(authSvc)
 	authHandler.Register(v1)
 
