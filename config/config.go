@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -138,12 +139,18 @@ func Load() (*Config, error) {
 	if err := v.Unmarshal(&c); err != nil {
 		return nil, fmt.Errorf("config: unmarshal: %w", err)
 	}
-	// Viper Unmarshal does not always apply bound env for nested keys; override from env so Docker/compose DB_URL is used.
+	// Viper Unmarshal does not always apply bound env for nested keys; override from env so Docker/compose is used.
 	if u := os.Getenv("DB_URL"); u != "" {
 		c.DB.URL = u
 	}
 	if u := os.Getenv("REDIS_URL"); u != "" {
 		c.Redis.URL = u
+	}
+	if s := os.Getenv("CORS_ALLOWED_ORIGINS"); s != "" {
+		var origins []string
+		if err := json.Unmarshal([]byte(s), &origins); err == nil && len(origins) > 0 {
+			c.CORS.AllowedOrigins = origins
+		}
 	}
 	return &c, nil
 }
