@@ -10,7 +10,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import type { User } from "@supabase/supabase-js";
+import type { ApiUser } from "@/lib/auth-api";
 import jsPDF from "jspdf";
 import { useWhiteboardHistory } from "@/hooks/useWhiteboardHistory";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
@@ -21,7 +21,7 @@ import { createMindMapTemplate, addChildNode, updateMindMapConnections } from ".
 
 interface EmbeddedWhiteboardProps {
   diagramId?: string | null;
-  user: User | null;
+  user: ApiUser | null;
   onClose: () => void;
   onSave?: () => void;
 }

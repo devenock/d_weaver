@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth, ApiError } from "@/contexts/AuthContext";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ export default function Signup() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
+  const { register, isAuthenticated, loading: authLoading } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
@@ -23,46 +24,31 @@ export default function Signup() {
   }, [searchParams]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) navigate("/dashboard", { replace: true });
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) navigate(redirectTo, { replace: true });
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate, redirectTo]);
+    if (authLoading) return;
+    if (isAuthenticated) navigate(redirectTo, { replace: true });
+  }, [authLoading, isAuthenticated, navigate, redirectTo]);
 
   const handleSignUp = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.auth.signUp({
-      email,
-      password,
-      options: {
-        emailRedirectTo: `${window.location.origin}/dashboard`,
-      },
-    });
-
-    if (error) {
-      toast({
-        title: "Sign up failed",
-        description: error.message,
-        variant: "destructive",
-      });
-    } else {
+    try {
+      await register(email, password);
       toast({
         title: "Account created",
-        description: "You can now sign in with your new credentials.",
+        description: "You're signed in. Welcome!",
       });
-      navigate("/login", { replace: true });
+      navigate(redirectTo, { replace: true });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.body.message : "Sign up failed";
+      toast({
+        title: "Sign up failed",
+        description: message,
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
@@ -119,7 +105,7 @@ export default function Signup() {
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               autoComplete="new-password"
-              minLength={6}
+              minLength={8}
               required
               className="h-11"
             />
@@ -140,4 +126,3 @@ export default function Signup() {
     </AuthShell>
   );
 }
-

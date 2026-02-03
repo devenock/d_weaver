@@ -2,12 +2,14 @@ package service
 
 import (
 	"context"
+	"strings"
 	"time"
 
 	"github.com/devenock/d_weaver/internal/auth/jwt"
 	"github.com/devenock/d_weaver/internal/auth/model"
 	"github.com/devenock/d_weaver/internal/common"
 	"github.com/devenock/d_weaver/pkg/database"
+	"github.com/devenock/d_weaver/pkg/logger"
 	"github.com/google/uuid"
 	"golang.org/x/crypto/bcrypt"
 )
@@ -26,21 +28,38 @@ type Repository interface {
 	UpdateUserPassword(ctx context.Context, userID uuid.UUID, passwordHash string) error
 }
 
+// PasswordResetSender sends the password reset link by email. Implementations can use Resend, etc.
+type PasswordResetSender interface {
+	SendPasswordReset(toEmail, resetLink string) error
+}
+
 // Service implements auth business logic. Calls Repository and JWT/hash helpers.
 type Service struct {
-	repo     Repository
-	jwt      *jwt.Issuer
-	accessDur time.Duration
-	refreshDur time.Duration
+	repo                    Repository
+	jwt                     *jwt.Issuer
+	accessDur               time.Duration
+	refreshDur              time.Duration
+	passwordResetBaseURL    string
+	passwordResetReturnLink bool
+	passwordResetSender     PasswordResetSender
+	log                     logger.Logger // optional; when set, send failures are logged
 }
 
 // New returns an auth service that uses the given repository and JWT issuer.
-func New(repo Repository, jwtIssuer *jwt.Issuer, accessMinutes, refreshDays int) *Service {
+// passwordResetBaseURL and passwordResetReturnLink are optional: when both set, ForgotPassword
+// can return a reset link in the response (e.g. for dev when email is not configured).
+// passwordResetSender is optional: when set, ForgotPassword sends the reset link by email (e.g. via Resend).
+// log is optional; when set, password reset email send failures are logged (no PII).
+func New(repo Repository, jwtIssuer *jwt.Issuer, accessMinutes, refreshDays int, passwordResetBaseURL string, passwordResetReturnLink bool, passwordResetSender PasswordResetSender, log logger.Logger) *Service {
 	return &Service{
-		repo:       repo,
-		jwt:        jwtIssuer,
-		accessDur:  time.Duration(accessMinutes) * time.Minute,
-		refreshDur: time.Duration(refreshDays) * 24 * time.Hour,
+		repo:                    repo,
+		jwt:                     jwtIssuer,
+		accessDur:               time.Duration(accessMinutes) * time.Minute,
+		refreshDur:              time.Duration(refreshDays) * 24 * time.Hour,
+		passwordResetBaseURL:    strings.TrimSuffix(passwordResetBaseURL, "/"),
+		passwordResetReturnLink: passwordResetReturnLink && passwordResetBaseURL != "",
+		passwordResetSender:     passwordResetSender,
+		log:                     log,
 	}
 }
 
@@ -139,9 +158,10 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 
 // RefreshResult is returned from Refresh.
 type RefreshResult struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int    `json:"expires_in"`
+	User         model.UserResponse `json:"user"`
+	AccessToken  string             `json:"access_token"`
+	RefreshToken string             `json:"refresh_token"`
+	ExpiresIn    int                `json:"expires_in"`
 }
 
 // Refresh validates the refresh token and returns a new access/refresh pair (PDF: token refresh).
@@ -174,32 +194,52 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*RefreshRes
 		_ = err
 	}
 	return &RefreshResult{
+		User:         model.FromUser(u),
 		AccessToken:  access,
-		RefreshToken:  plainRef,
+		RefreshToken: plainRef,
 		ExpiresIn:    int(s.accessDur.Seconds()),
 	}, nil
 }
 
-// ForgotPassword creates a reset token (PDF: email-based recovery). Caller must send email.
-func (s *Service) ForgotPassword(ctx context.Context, email string) error {
+// ForgotPasswordResult is returned when ReturnLinkInResponse is true (e.g. dev mode).
+type ForgotPasswordResult struct {
+	ResetLink string `json:"reset_link"`
+}
+
+// ForgotPassword creates a reset token (PDF: email-based recovery). When passwordResetReturnLink
+// is true and base URL is set, returns the reset link for the client (e.g. dev without email).
+// Otherwise the link should be sent by email (not implemented here).
+func (s *Service) ForgotPassword(ctx context.Context, email string) (*ForgotPasswordResult, error) {
 	u, err := s.repo.GetUserByEmail(ctx, email)
 	if err != nil {
-		return common.NewDomainError(common.CodeInternalError, "Request failed.", err)
+		return nil, common.NewDomainError(common.CodeInternalError, "Request failed.", err)
 	}
 	if u == nil {
 		// Do not leak existence: succeed with no-op
-		return nil
+		return nil, nil
 	}
 	plain, hash, err := jwt.GenerateRefreshToken() // reuse token generator for reset tokens
 	if err != nil {
-		return common.NewDomainError(common.CodeInternalError, "Request failed.", err)
+		return nil, common.NewDomainError(common.CodeInternalError, "Request failed.", err)
 	}
 	expAt := time.Now().Add(7 * 24 * time.Hour) // 7 days per PDF
 	if err := s.repo.CreatePasswordResetToken(ctx, u.ID, hash, expAt); err != nil {
-		return common.NewDomainError(common.CodeInternalError, "Request failed.", err)
+		return nil, common.NewDomainError(common.CodeInternalError, "Request failed.", err)
 	}
-	_ = plain // TODO: send email with reset link containing plain token
-	return nil
+	resetLink := ""
+	if s.passwordResetBaseURL != "" {
+		resetLink = s.passwordResetBaseURL + "/reset-password?token=" + plain
+	}
+	if s.passwordResetSender != nil && resetLink != "" {
+		if err := s.passwordResetSender.SendPasswordReset(u.Email, resetLink); err != nil && s.log != nil {
+			s.log.Error().Err(err).Str("user_id", u.ID.String()).Msg("password reset email send failed")
+		}
+	}
+	var result *ForgotPasswordResult
+	if s.passwordResetReturnLink && resetLink != "" {
+		result = &ForgotPasswordResult{ResetLink: resetLink}
+	}
+	return result, nil
 }
 
 // ResetPassword sets a new password using the reset token (PDF: reset password).

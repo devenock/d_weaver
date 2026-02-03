@@ -30,8 +30,8 @@ OpenAPI specs (raw YAML): `GET /api-docs/auth`, `/api-docs/workspace`, `/api-doc
 - `POST /api/v1/auth/login` — same body → same shape
 - `POST /api/v1/auth/logout` — body `{ "refresh_token" }` → 204
 - `POST /api/v1/auth/refresh` — body `{ "refresh_token" }` → new tokens
-- `POST /api/v1/auth/forgot-password` — body `{ "email" }` → 200
-- `POST /api/v1/auth/reset-password` — body `{ "token", "new_password" }` → 200
+- `POST /api/v1/auth/forgot-password` — body `{ "email" }` → 204 or 200 with `{ "data": { "reset_link" } }` (when dev mode)
+- `POST /api/v1/auth/reset-password` — body `{ "token", "new_password" }` → 204
 
 All other routes below require `Authorization: Bearer <access_token>`.
 
@@ -91,6 +91,10 @@ All other routes below require `Authorization: Bearer <access_token>`.
 | `RATE_LIMIT_REQUESTS_PER_MINUTE` | No | `100` | Max requests per minute per key (user or IP) |
 | `RATE_LIMIT_ENABLED` | No | `true` | Set false to disable rate limiting |
 | `CORS_ALLOWED_ORIGINS` | No | `*` | Comma or list; restrict in production |
+| `PASSWORD_RESET_BASE_URL` | No | — | Base URL for reset links (e.g. `https://app.example.com` or `http://localhost:3000`) |
+| `PASSWORD_RESET_RETURN_LINK_IN_RESPONSE` | No | `false` | Set `true` to return `reset_link` in forgot-password response (dev mode when email is not sent) |
+| `RESEND_API_KEY` | For email | — | Resend API key (from [Resend Dashboard](https://resend.com/api-keys)); when set with `PASSWORD_RESET_FROM_EMAIL`, forgot-password sends the reset link by email |
+| `PASSWORD_RESET_FROM_EMAIL` | For email | — | Sender address for reset emails, e.g. `DiagramGen <noreply@yourdomain.com>` (must be a verified domain in Resend) |
 
 Optional: `config.yaml` or `config/config.yaml` (viper); env overrides file.
 
@@ -100,7 +104,7 @@ Optional: `config.yaml` or `config/config.yaml` (viper); env overrides file.
 
 From the repo root:
 
-1. **Postgres in Docker** (recommended for local dev): start Postgres with `make docker-up` (or `docker compose -f deployments/docker-compose.yml up -d postgres`). The API defaults to `DB_URL=postgres://dweaver:dweaver_dev_password@localhost:5432/dweaver?sslmode=disable`, so no env needed.
+1. **Postgres in Docker** (recommended for local dev): run `make docker-up` to start the full stack (postgres, redis, api, client). See `make help` for other Docker targets. The API defaults to `DB_URL=postgres://dweaver:dweaver_dev_password@localhost:5432/dweaver?sslmode=disable`, so no env needed.
 2. **Override DB or other vars**: copy `.env.example` to `.env` and edit. The API loads `.env` automatically when present.
 
 ```bash
@@ -146,9 +150,22 @@ The UI is the **React + TypeScript** app in `web/client` (Vite). The API serves 
 - **Logging** — `pkg/logger` wired: request log (method, path, status, latency, `X-Request-ID`), server start/error/shutdown. Level via `LOG_LEVEL`.
 - **Tests** — Unit tests for `internal/common` (error response mapping), `internal/middleware` (memory rate limiter), `internal/app` (health endpoint, config load). Run: `go test ./internal/... ./config/...`
 
+## Password reset email (Resend)
+
+Forgot-password can send the reset link by email using [Resend](https://resend.com). To make it fully functional:
+
+1. **Create a Resend account** at [resend.com](https://resend.com) and get an **API key** from [API Keys](https://resend.com/api-keys).
+2. **Verify a domain** in the Resend dashboard (e.g. `yourdomain.com`) so you can send from `noreply@yourdomain.com`. For testing, Resend also allows sending from `onboarding@resend.dev` to your own email.
+3. **Set environment variables** (or add to `.env` / Docker Compose):
+   - `RESEND_API_KEY` — your Resend API key (e.g. `re_...`).
+   - `PASSWORD_RESET_FROM_EMAIL` — sender address, e.g. `DiagramGen <noreply@yourdomain.com>` or for testing `onboarding@resend.dev`.
+   - `PASSWORD_RESET_BASE_URL` — base URL of your app so the link is correct (e.g. `https://app.yourdomain.com` or `http://localhost:3000`).
+
+With these set, when a user submits "Forgot password" with their email, the API will send them an email containing the reset link. If you do not set `RESEND_API_KEY` and `PASSWORD_RESET_FROM_EMAIL`, you can still use dev mode: set `PASSWORD_RESET_RETURN_LINK_IN_RESPONSE=true` and `PASSWORD_RESET_BASE_URL` so the API returns the link in the response and the frontend can display it.
+
 ## Before / during testing
 
 1. **AI key** — Set `AI_API_KEY` for `POST /api/v1/ai/generate-diagram`. You will add this yourself.
-2. **Frontend** — The web client still uses Supabase. To test against this backend: set API base URL (e.g. `VITE_API_URL=http://localhost:8200`), switch auth/diagrams/AI/collaboration to the endpoints and WebSocket above (see API reference).
+2. **Frontend** — The web client uses the Go API for auth. Set `VITE_API_URL` when the frontend and API run on different origins (e.g. `http://localhost:8200`).
 3. **TLS** — Not in code. For production, use a reverse proxy or enable TLS in the server config.
 4. **Redis** — Optional. With `REDIS_URL` set, rate limiting is Redis-backed (shared across instances). Without it, in-memory limiter is used (fine for single-instance testing).

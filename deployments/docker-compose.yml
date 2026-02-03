@@ -46,6 +46,13 @@ services:
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 8200
       CORS_ALLOWED_ORIGINS: '["http://localhost:5173","http://localhost:3000"]'
+      # Password reset: base URL for reset links; set to your frontend URL in production
+      PASSWORD_RESET_BASE_URL: http://localhost:3000
+      # Set to "true" to return reset link in API response (dev, no email). Leave unset when using Resend.
+      PASSWORD_RESET_RETURN_LINK_IN_RESPONSE: "true"
+      # Resend: set via .env (copy .env.example to .env and add RESEND_API_KEY, PASSWORD_RESET_FROM_EMAIL)
+      RESEND_API_KEY: ${RESEND_API_KEY:-}
+      PASSWORD_RESET_FROM_EMAIL: ${PASSWORD_RESET_FROM_EMAIL:-}
     ports:
       - "8200:8200"
     depends_on:
@@ -57,6 +64,8 @@ services:
       - dweaver-network
     restart: unless-stopped
 
+  # Frontend: Vite dev server listens on 0.0.0.0:3000 inside the container.
+  # Access the app at http://localhost:3000
   client:
     build:
       context: ../web/client
@@ -70,8 +79,10 @@ services:
       - dweaver-network
     restart: unless-stopped
     environment:
-      # Frontend can use these to call API (if needed at runtime)
-      - VITE_API_URL=http://localhost:8200
+      # Proxy /api requests to the api service (required when running in Docker)
+      - VITE_PROXY_API=http://api:8200
+      # Browser-side API base URL; must include /api so requests go to /api/v1/*
+      - VITE_API_URL=http://localhost:8200/api
 
 volumes:
   postgres_data:

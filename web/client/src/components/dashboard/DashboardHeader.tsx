@@ -1,4 +1,4 @@
-import type { User } from "@supabase/supabase-js";
+import type { ApiUser } from "@/lib/auth-api";
 import { Search, Bell, Settings, LogOut, UserPlus } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,7 +14,7 @@ import {
 } from "@/components/ui/dropdown-menu";
 
 interface DashboardHeaderProps {
-  user: User | null;
+  user: ApiUser | null;
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onSignOut: () => void;

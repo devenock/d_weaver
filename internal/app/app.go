@@ -14,6 +14,7 @@ import (
 	"github.com/devenock/d_weaver/internal/ai/client"
 	aihandler "github.com/devenock/d_weaver/internal/ai/handler"
 	aisvc "github.com/devenock/d_weaver/internal/ai/service"
+	authemail "github.com/devenock/d_weaver/internal/auth/email"
 	"github.com/devenock/d_weaver/internal/auth/handler"
 	"github.com/devenock/d_weaver/internal/auth/jwt"
 	authrepo "github.com/devenock/d_weaver/internal/auth/repository"
@@ -53,6 +54,12 @@ func New(cfg *config.Config, log pkglogger.Logger) (*App, error) {
 	if len(allowOrigins) == 0 {
 		allowOrigins = []string{"*"}
 	}
+	// With credentials (cookies/auth), the browser requires a specific origin, not "*".
+	// Use a dev-friendly list when config has wildcard so auth flow works locally and in Docker.
+	allowCredentials := true
+	if len(allowOrigins) == 1 && allowOrigins[0] == "*" {
+		allowOrigins = []string{"http://localhost:3000", "http://localhost:5173", "http://127.0.0.1:3000", "http://127.0.0.1:5173"}
+	}
 	allowMethods := cfg.CORS.AllowedMethods
 	if len(allowMethods) == 0 {
 		allowMethods = []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"}
@@ -65,7 +72,7 @@ func New(cfg *config.Config, log pkglogger.Logger) (*App, error) {
 		AllowOrigins:     allowOrigins,
 		AllowMethods:     allowMethods,
 		AllowHeaders:     allowHeaders,
-		AllowCredentials: false,
+		AllowCredentials: allowCredentials,
 		ExposeHeaders:    []string{"X-Request-ID"},
 	}
 	r.Use(cors.New(corsConfig))
@@ -126,7 +133,11 @@ func New(cfg *config.Config, log pkglogger.Logger) (*App, error) {
 	v1 := r.Group("/api/v1")
 
 	authRepo := authrepo.New(pool)
-	authSvc := authsvc.New(authRepo, jwtIssuer, cfg.JWT.AccessDurationMinutes, cfg.JWT.RefreshDurationDays)
+	var passwordResetSender authsvc.PasswordResetSender
+	if cfg.PasswordReset.ResendAPIKey != "" && cfg.PasswordReset.FromEmail != "" {
+		passwordResetSender = authemail.NewResendSender(cfg.PasswordReset.ResendAPIKey, cfg.PasswordReset.FromEmail)
+	}
+	authSvc := authsvc.New(authRepo, jwtIssuer, cfg.JWT.AccessDurationMinutes, cfg.JWT.RefreshDurationDays, cfg.PasswordReset.BaseURL, cfg.PasswordReset.ReturnLinkInResponse, passwordResetSender, log)
 	authHandler := handler.New(authSvc)
 	authHandler.Register(v1)
 

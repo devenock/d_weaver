@@ -107,7 +107,10 @@ paths:
     post:
       tags: [auth]
       summary: Request password reset
-      description: Request an email-based password reset. Does not leak whether the email exists.
+      description: |
+        Request an email-based password reset. Does not leak whether the email exists.
+        When PASSWORD_RESET_RETURN_LINK_IN_RESPONSE is true (e.g. dev without email),
+        returns 200 with reset_link in the body instead of 204.
       operationId: forgotPassword
       requestBody:
         required: true
@@ -116,8 +119,22 @@ paths:
             schema:
               $ref: '#/components/schemas/ForgotPasswordRequest'
       responses:
+        '200':
+          description: Reset link returned (dev mode when PASSWORD_RESET_RETURN_LINK_IN_RESPONSE is true)
+          content:
+            application/json:
+              schema:
+                type: object
+                properties:
+                  data:
+                    type: object
+                    properties:
+                      reset_link:
+                        type: string
+                        format: uri
+                        description: URL to the reset-password page with token
         '204':
-          description: Request accepted (email sent if address exists)
+          description: Request accepted (email sent if address exists, or no link returned)
         '400':
           $ref: '#/components/responses/BadRequest'
 

@@ -1,6 +1,7 @@
 package config
 
 import (
+	"encoding/json"
 	"fmt"
 	"os"
 	"strings"
@@ -15,8 +16,9 @@ type Config struct {
 	Redis     RedisConfig     `mapstructure:"redis"`
 	JWT       JWTConfig       `mapstructure:"jwt"`
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
-	CORS      CORSConfig      `mapstructure:"cors"`
-	Upload    UploadConfig    `mapstructure:"upload"`
+	CORS           CORSConfig           `mapstructure:"cors"`
+	PasswordReset  PasswordResetConfig `mapstructure:"password_reset"`
+	Upload         UploadConfig        `mapstructure:"upload"`
 	AI        AIConfig        `mapstructure:"ai"`
 	Log       LogConfig       `mapstructure:"log"`
 	Web       WebConfig       `mapstructure:"web"`
@@ -86,6 +88,14 @@ type CORSConfig struct {
 	AllowedHeaders []string
 }
 
+// PasswordResetConfig for forgot-password flow (reset link base URL; optional dev mode to return link in response; optional Resend email).
+type PasswordResetConfig struct {
+	BaseURL               string `mapstructure:"base_url"`
+	ReturnLinkInResponse  bool   `mapstructure:"return_link_in_response"`
+	ResendAPIKey          string `mapstructure:"resend_api_key"`   // When set, send reset link by email via Resend
+	FromEmail             string `mapstructure:"from_email"`      // Sender for reset email, e.g. "DiagramGen <noreply@yourdomain.com>"
+}
+
 // Load reads config from env and optional config file. Prefer env.
 func Load() (*Config, error) {
 	v := viper.New()
@@ -116,6 +126,10 @@ func Load() (*Config, error) {
 	v.SetDefault("cors.allowed_origins", []string{"*"})
 	v.SetDefault("cors.allowed_methods", []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
 	v.SetDefault("cors.allowed_headers", []string{"Authorization", "Content-Type", "X-Request-ID"})
+	v.SetDefault("password_reset.base_url", "")
+	v.SetDefault("password_reset.return_link_in_response", false)
+	v.SetDefault("password_reset.resend_api_key", "")
+	v.SetDefault("password_reset.from_email", "")
 	v.SetDefault("upload.dir", "uploads")
 	v.SetDefault("upload.max_bytes", 10*1024*1024) // 10MB
 	v.SetDefault("ai.base_url", "https://ai.gateway.lovable.dev/v1")
@@ -138,12 +152,30 @@ func Load() (*Config, error) {
 	if err := v.Unmarshal(&c); err != nil {
 		return nil, fmt.Errorf("config: unmarshal: %w", err)
 	}
-	// Viper Unmarshal does not always apply bound env for nested keys; override from env so Docker/compose DB_URL is used.
+	// Viper Unmarshal does not always apply bound env for nested keys; override from env so Docker/compose is used.
 	if u := os.Getenv("DB_URL"); u != "" {
 		c.DB.URL = u
 	}
 	if u := os.Getenv("REDIS_URL"); u != "" {
 		c.Redis.URL = u
+	}
+	if s := os.Getenv("CORS_ALLOWED_ORIGINS"); s != "" {
+		var origins []string
+		if err := json.Unmarshal([]byte(s), &origins); err == nil && len(origins) > 0 {
+			c.CORS.AllowedOrigins = origins
+		}
+	}
+	if s := os.Getenv("PASSWORD_RESET_BASE_URL"); s != "" {
+		c.PasswordReset.BaseURL = s
+	}
+	if os.Getenv("PASSWORD_RESET_RETURN_LINK_IN_RESPONSE") == "true" || os.Getenv("PASSWORD_RESET_RETURN_LINK_IN_RESPONSE") == "1" {
+		c.PasswordReset.ReturnLinkInResponse = true
+	}
+	if s := os.Getenv("RESEND_API_KEY"); s != "" {
+		c.PasswordReset.ResendAPIKey = s
+	}
+	if s := os.Getenv("PASSWORD_RESET_FROM_EMAIL"); s != "" {
+		c.PasswordReset.FromEmail = s
 	}
 	return &c, nil
 }
