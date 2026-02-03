@@ -16,8 +16,9 @@ type Config struct {
 	Redis     RedisConfig     `mapstructure:"redis"`
 	JWT       JWTConfig       `mapstructure:"jwt"`
 	RateLimit RateLimitConfig `mapstructure:"rate_limit"`
-	CORS      CORSConfig      `mapstructure:"cors"`
-	Upload    UploadConfig    `mapstructure:"upload"`
+	CORS           CORSConfig           `mapstructure:"cors"`
+	PasswordReset  PasswordResetConfig `mapstructure:"password_reset"`
+	Upload         UploadConfig        `mapstructure:"upload"`
 	AI        AIConfig        `mapstructure:"ai"`
 	Log       LogConfig       `mapstructure:"log"`
 	Web       WebConfig       `mapstructure:"web"`
@@ -87,6 +88,12 @@ type CORSConfig struct {
 	AllowedHeaders []string
 }
 
+// PasswordResetConfig for forgot-password flow (reset link base URL; optional dev mode to return link in response).
+type PasswordResetConfig struct {
+	BaseURL               string `mapstructure:"base_url"`
+	ReturnLinkInResponse  bool   `mapstructure:"return_link_in_response"`
+}
+
 // Load reads config from env and optional config file. Prefer env.
 func Load() (*Config, error) {
 	v := viper.New()
@@ -117,6 +124,8 @@ func Load() (*Config, error) {
 	v.SetDefault("cors.allowed_origins", []string{"*"})
 	v.SetDefault("cors.allowed_methods", []string{"GET", "POST", "PUT", "PATCH", "DELETE", "OPTIONS"})
 	v.SetDefault("cors.allowed_headers", []string{"Authorization", "Content-Type", "X-Request-ID"})
+	v.SetDefault("password_reset.base_url", "")
+	v.SetDefault("password_reset.return_link_in_response", false)
 	v.SetDefault("upload.dir", "uploads")
 	v.SetDefault("upload.max_bytes", 10*1024*1024) // 10MB
 	v.SetDefault("ai.base_url", "https://ai.gateway.lovable.dev/v1")
@@ -151,6 +160,12 @@ func Load() (*Config, error) {
 		if err := json.Unmarshal([]byte(s), &origins); err == nil && len(origins) > 0 {
 			c.CORS.AllowedOrigins = origins
 		}
+	}
+	if s := os.Getenv("PASSWORD_RESET_BASE_URL"); s != "" {
+		c.PasswordReset.BaseURL = s
+	}
+	if os.Getenv("PASSWORD_RESET_RETURN_LINK_IN_RESPONSE") == "true" || os.Getenv("PASSWORD_RESET_RETURN_LINK_IN_RESPONSE") == "1" {
+		c.PasswordReset.ReturnLinkInResponse = true
 	}
 	return &c, nil
 }

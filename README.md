@@ -30,8 +30,8 @@ OpenAPI specs (raw YAML): `GET /api-docs/auth`, `/api-docs/workspace`, `/api-doc
 - `POST /api/v1/auth/login` — same body → same shape
 - `POST /api/v1/auth/logout` — body `{ "refresh_token" }` → 204
 - `POST /api/v1/auth/refresh` — body `{ "refresh_token" }` → new tokens
-- `POST /api/v1/auth/forgot-password` — body `{ "email" }` → 200
-- `POST /api/v1/auth/reset-password` — body `{ "token", "new_password" }` → 200
+- `POST /api/v1/auth/forgot-password` — body `{ "email" }` → 204 or 200 with `{ "data": { "reset_link" } }` (when dev mode)
+- `POST /api/v1/auth/reset-password` — body `{ "token", "new_password" }` → 204
 
 All other routes below require `Authorization: Bearer <access_token>`.
 
@@ -91,6 +91,8 @@ All other routes below require `Authorization: Bearer <access_token>`.
 | `RATE_LIMIT_REQUESTS_PER_MINUTE` | No | `100` | Max requests per minute per key (user or IP) |
 | `RATE_LIMIT_ENABLED` | No | `true` | Set false to disable rate limiting |
 | `CORS_ALLOWED_ORIGINS` | No | `*` | Comma or list; restrict in production |
+| `PASSWORD_RESET_BASE_URL` | No | — | Base URL for reset links (e.g. `http://localhost:3000`) |
+| `PASSWORD_RESET_RETURN_LINK_IN_RESPONSE` | No | `false` | Set `true` to return `reset_link` in forgot-password response (dev mode when email is not sent) |
 
 Optional: `config.yaml` or `config/config.yaml` (viper); env overrides file.
 

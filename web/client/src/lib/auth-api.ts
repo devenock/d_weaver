@@ -56,8 +56,13 @@ export async function refresh(refreshToken: string): Promise<RefreshResult> {
   });
 }
 
-export async function forgotPassword(email: string): Promise<void> {
-  await apiRequest<void>("/api/v1/auth/forgot-password", {
+export interface ForgotPasswordResult {
+  reset_link: string;
+}
+
+/** Returns reset_link when server is in dev mode (PASSWORD_RESET_RETURN_LINK_IN_RESPONSE); otherwise undefined. */
+export async function forgotPassword(email: string): Promise<ForgotPasswordResult | undefined> {
+  return apiRequest<ForgotPasswordResult | undefined>("/api/v1/auth/forgot-password", {
     method: "POST",
     body: JSON.stringify({ email }),
   });

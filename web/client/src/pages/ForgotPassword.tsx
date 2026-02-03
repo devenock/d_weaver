@@ -15,19 +15,30 @@ export default function ForgotPassword() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
 
+  const [resetLink, setResetLink] = useState<string | null>(null);
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
     setSent(false);
+    setResetLink(null);
 
     try {
-      await forgotPassword(email);
+      const result = await forgotPassword(email);
       setSent(true);
-      toast({
-        title: "Check your email",
-        description:
-          "If an account exists with this email, you'll receive instructions to reset your password.",
-      });
+      if (result?.reset_link) {
+        setResetLink(result.reset_link);
+        toast({
+          title: "Reset link ready",
+          description: "Use the link below to set a new password (development mode).",
+        });
+      } else {
+        toast({
+          title: "Check your email",
+          description:
+            "If an account exists with this email, you'll receive instructions to reset your password.",
+        });
+      }
     } catch (err) {
       const message =
         err instanceof ApiError ? err.body.message : "Request failed. Try again.";
@@ -58,10 +69,29 @@ export default function ForgotPassword() {
         </div>
 
         {sent ? (
-          <div className="mt-6 rounded-lg border bg-muted/50 p-4 text-sm text-muted-foreground">
-            If an account exists with <strong className="text-foreground">{email}</strong>,
-            you'll receive an email with a link to set a new password. The link may
-            take a few minutes to arrive.
+          <div className="mt-6 space-y-4">
+            {resetLink ? (
+              <div className="rounded-lg border bg-muted/50 p-4 text-sm">
+                <p className="mb-2 text-muted-foreground">
+                  Use this link to set a new password (development mode):
+                </p>
+                <a
+                  href={resetLink}
+                  className="block break-all font-medium text-primary hover:underline"
+                >
+                  {resetLink}
+                </a>
+                <Button asChild variant="outline" size="sm" className="mt-2">
+                  <a href={resetLink}>Open reset page</a>
+                </Button>
+              </div>
+            ) : (
+              <div className="rounded-lg border bg-muted/50 p-4 text-sm text-muted-foreground">
+                If an account exists with <strong className="text-foreground">{email}</strong>,
+                you'll receive an email with a link to set a new password. The link may
+                take a few minutes to arrive.
+              </div>
+            )}
           </div>
         ) : (
           <form onSubmit={handleSubmit} className="mt-6 space-y-4">

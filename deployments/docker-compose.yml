@@ -46,6 +46,9 @@ services:
       SERVER_HOST: 0.0.0.0
       SERVER_PORT: 8200
       CORS_ALLOWED_ORIGINS: '["http://localhost:5173","http://localhost:3000"]'
+      # Password reset: return link in API response (dev mode, no email sent)
+      PASSWORD_RESET_BASE_URL: http://localhost:3000
+      PASSWORD_RESET_RETURN_LINK_IN_RESPONSE: "true"
     ports:
       - "8200:8200"
     depends_on:

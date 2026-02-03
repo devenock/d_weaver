@@ -132,7 +132,7 @@ func New(cfg *config.Config, log pkglogger.Logger) (*App, error) {
 	v1 := r.Group("/api/v1")
 
 	authRepo := authrepo.New(pool)
-	authSvc := authsvc.New(authRepo, jwtIssuer, cfg.JWT.AccessDurationMinutes, cfg.JWT.RefreshDurationDays)
+	authSvc := authsvc.New(authRepo, jwtIssuer, cfg.JWT.AccessDurationMinutes, cfg.JWT.RefreshDurationDays, cfg.PasswordReset.BaseURL, cfg.PasswordReset.ReturnLinkInResponse)
 	authHandler := handler.New(authSvc)
 	authHandler.Register(v1)
 

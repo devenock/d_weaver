@@ -21,7 +21,7 @@ type AuthService interface {
 	Login(ctx context.Context, email, password string) (*service.LoginResult, error)
 	Logout(ctx context.Context, refreshToken string) error
 	Refresh(ctx context.Context, refreshToken string) (*service.RefreshResult, error)
-	ForgotPassword(ctx context.Context, email string) error
+	ForgotPassword(ctx context.Context, email string) (*service.ForgotPasswordResult, error)
 	ResetPassword(ctx context.Context, token, newPassword string) error
 }
 
@@ -122,8 +122,13 @@ func (h *Handler) forgotPassword(c *gin.Context) {
 		})
 		return
 	}
-	if err := h.svc.ForgotPassword(c.Request.Context(), req.Email); err != nil {
+	result, err := h.svc.ForgotPassword(c.Request.Context(), req.Email)
+	if err != nil {
 		common.WriteErrorFromDomain(c, err)
+		return
+	}
+	if result != nil && result.ResetLink != "" {
+		common.WriteOK(c, result)
 		return
 	}
 	common.WriteNoContent(c)
