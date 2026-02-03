@@ -74,8 +74,8 @@ services:
     environment:
       # Proxy /api requests to the api service (required when running in Docker)
       - VITE_PROXY_API=http://api:8200
-      # Browser-side API base URL (browser runs on host; localhost:8200 is correct)
-      - VITE_API_URL=http://localhost:8200
+      # Browser-side API base URL; must include /api so requests go to /api/v1/*
+      - VITE_API_URL=http://localhost:8200/api
 
 volumes:
   postgres_data:

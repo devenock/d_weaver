@@ -1,11 +1,14 @@
 /**
- * Base API URL. In dev, Vite proxy forwards /api to the Go backend.
- * VITE_API_URL can override (e.g. empty string to use relative /api).
+ * Base API URL. Paths are always /api/v1/... so the backend route is correct.
+ * - When VITE_API_URL is unset: base is "" so requests are relative (e.g. /api/v1/auth/register) and the Vite proxy forwards to the backend.
+ * - When VITE_API_URL is set (e.g. http://localhost:8200 or http://localhost:8200/api): base is the origin only so URL = origin + /api/v1/...
  */
 export function getApiBaseUrl(): string {
   const env = import.meta.env.VITE_API_URL;
-  if (env !== undefined && env !== "") return env;
-  return "/api";
+  if (env === undefined || env === "") return "";
+  const s = env.replace(/\/+$/, "");
+  const origin = s.endsWith("/api") ? s.slice(0, -4) : s;
+  return origin;
 }
 
 export interface ApiErrorBody {
@@ -38,7 +41,8 @@ export async function apiRequest<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const base = getApiBaseUrl();
-  const url = path.startsWith("/") ? `${base}${path}` : `${base}/${path}`;
+  const p = path.startsWith("/") ? path : `/${path}`;
+  const url = base ? `${base.replace(/\/+$/, "")}${p}` : p;
   const res = await fetch(url, {
     ...options,
     headers: {
