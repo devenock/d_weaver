@@ -1,7 +1,8 @@
 # DWeaver Makefile – run from repo root
 # Use: make help | make docker-up | make run-api | make client-dev | etc.
 
-.PHONY: help docker-up docker-down docker-build docker-logs docker-ps \
+.PHONY: help docker-up docker-down docker-build docker-rebuild docker-restart \
+	docker-build-client docker-logs docker-logs-api docker-logs-client docker-logs-postgres docker-logs-redis docker-ps \
 	run-api build-api test-api lint-api migrate \
 	client-dev client-build client-install client-lint client-preview \
 	clean
@@ -20,6 +21,7 @@ help:
 	@echo "  make docker-logs-api  make docker-logs-client  (per-service)"
 	@echo "  make docker-logs-postgres  make docker-logs-redis"
 	@echo "  make docker-ps        List running containers"
+	@echo "  make docker-build-client  Rebuild and start only the client container"
 	@echo ""
 	@echo "Backend (Go API)"
 	@echo "  make run-api          Run API locally (need DB_URL, see README)"
@@ -74,6 +76,10 @@ docker-logs-redis:
 
 docker-ps:
 	docker compose -f $(COMPOSE_FILE) ps
+
+# Rebuild and start only the client (e.g. after frontend or Dockerfile changes)
+docker-build-client:
+	docker compose -f $(COMPOSE_FILE) up -d --build client
 
 # --- Backend (Go API) ---
 API_MAIN := ./cmd/api

@@ -100,7 +100,7 @@ Optional: `config.yaml` or `config/config.yaml` (viper); env overrides file.
 
 From the repo root:
 
-1. **Postgres in Docker** (recommended for local dev): start Postgres with `make docker-up` (or `docker compose -f deployments/docker-compose.yml up -d postgres`). The API defaults to `DB_URL=postgres://dweaver:dweaver_dev_password@localhost:5432/dweaver?sslmode=disable`, so no env needed.
+1. **Postgres in Docker** (recommended for local dev): run `make docker-up` to start the full stack (postgres, redis, api, client). See `make help` for other Docker targets. The API defaults to `DB_URL=postgres://dweaver:dweaver_dev_password@localhost:5432/dweaver?sslmode=disable`, so no env needed.
 2. **Override DB or other vars**: copy `.env.example` to `.env` and edit. The API loads `.env` automatically when present.
 
 ```bash
