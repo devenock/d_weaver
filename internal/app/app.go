@@ -14,6 +14,7 @@ import (
 	"github.com/devenock/d_weaver/internal/ai/client"
 	aihandler "github.com/devenock/d_weaver/internal/ai/handler"
 	aisvc "github.com/devenock/d_weaver/internal/ai/service"
+	authemail "github.com/devenock/d_weaver/internal/auth/email"
 	"github.com/devenock/d_weaver/internal/auth/handler"
 	"github.com/devenock/d_weaver/internal/auth/jwt"
 	authrepo "github.com/devenock/d_weaver/internal/auth/repository"
@@ -132,7 +133,11 @@ func New(cfg *config.Config, log pkglogger.Logger) (*App, error) {
 	v1 := r.Group("/api/v1")
 
 	authRepo := authrepo.New(pool)
-	authSvc := authsvc.New(authRepo, jwtIssuer, cfg.JWT.AccessDurationMinutes, cfg.JWT.RefreshDurationDays, cfg.PasswordReset.BaseURL, cfg.PasswordReset.ReturnLinkInResponse)
+	var passwordResetSender authsvc.PasswordResetSender
+	if cfg.PasswordReset.ResendAPIKey != "" && cfg.PasswordReset.FromEmail != "" {
+		passwordResetSender = authemail.NewResendSender(cfg.PasswordReset.ResendAPIKey, cfg.PasswordReset.FromEmail)
+	}
+	authSvc := authsvc.New(authRepo, jwtIssuer, cfg.JWT.AccessDurationMinutes, cfg.JWT.RefreshDurationDays, cfg.PasswordReset.BaseURL, cfg.PasswordReset.ReturnLinkInResponse, passwordResetSender)
 	authHandler := handler.New(authSvc)
 	authHandler.Register(v1)
 

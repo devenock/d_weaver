@@ -88,10 +88,12 @@ type CORSConfig struct {
 	AllowedHeaders []string
 }
 
-// PasswordResetConfig for forgot-password flow (reset link base URL; optional dev mode to return link in response).
+// PasswordResetConfig for forgot-password flow (reset link base URL; optional dev mode to return link in response; optional Resend email).
 type PasswordResetConfig struct {
 	BaseURL               string `mapstructure:"base_url"`
 	ReturnLinkInResponse  bool   `mapstructure:"return_link_in_response"`
+	ResendAPIKey          string `mapstructure:"resend_api_key"`   // When set, send reset link by email via Resend
+	FromEmail             string `mapstructure:"from_email"`      // Sender for reset email, e.g. "DiagramGen <noreply@yourdomain.com>"
 }
 
 // Load reads config from env and optional config file. Prefer env.
@@ -126,6 +128,8 @@ func Load() (*Config, error) {
 	v.SetDefault("cors.allowed_headers", []string{"Authorization", "Content-Type", "X-Request-ID"})
 	v.SetDefault("password_reset.base_url", "")
 	v.SetDefault("password_reset.return_link_in_response", false)
+	v.SetDefault("password_reset.resend_api_key", "")
+	v.SetDefault("password_reset.from_email", "")
 	v.SetDefault("upload.dir", "uploads")
 	v.SetDefault("upload.max_bytes", 10*1024*1024) // 10MB
 	v.SetDefault("ai.base_url", "https://ai.gateway.lovable.dev/v1")
@@ -166,6 +170,12 @@ func Load() (*Config, error) {
 	}
 	if os.Getenv("PASSWORD_RESET_RETURN_LINK_IN_RESPONSE") == "true" || os.Getenv("PASSWORD_RESET_RETURN_LINK_IN_RESPONSE") == "1" {
 		c.PasswordReset.ReturnLinkInResponse = true
+	}
+	if s := os.Getenv("RESEND_API_KEY"); s != "" {
+		c.PasswordReset.ResendAPIKey = s
+	}
+	if s := os.Getenv("PASSWORD_RESET_FROM_EMAIL"); s != "" {
+		c.PasswordReset.FromEmail = s
 	}
 	return &c, nil
 }

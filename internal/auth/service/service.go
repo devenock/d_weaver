@@ -27,6 +27,11 @@ type Repository interface {
 	UpdateUserPassword(ctx context.Context, userID uuid.UUID, passwordHash string) error
 }
 
+// PasswordResetSender sends the password reset link by email. Implementations can use Resend, etc.
+type PasswordResetSender interface {
+	SendPasswordReset(toEmail, resetLink string) error
+}
+
 // Service implements auth business logic. Calls Repository and JWT/hash helpers.
 type Service struct {
 	repo                    Repository
@@ -35,12 +40,14 @@ type Service struct {
 	refreshDur              time.Duration
 	passwordResetBaseURL    string
 	passwordResetReturnLink bool
+	passwordResetSender     PasswordResetSender
 }
 
 // New returns an auth service that uses the given repository and JWT issuer.
 // passwordResetBaseURL and passwordResetReturnLink are optional: when both set, ForgotPassword
 // can return a reset link in the response (e.g. for dev when email is not configured).
-func New(repo Repository, jwtIssuer *jwt.Issuer, accessMinutes, refreshDays int, passwordResetBaseURL string, passwordResetReturnLink bool) *Service {
+// passwordResetSender is optional: when set, ForgotPassword sends the reset link by email (e.g. via Resend).
+func New(repo Repository, jwtIssuer *jwt.Issuer, accessMinutes, refreshDays int, passwordResetBaseURL string, passwordResetReturnLink bool, passwordResetSender PasswordResetSender) *Service {
 	return &Service{
 		repo:                    repo,
 		jwt:                     jwtIssuer,
@@ -48,6 +55,7 @@ func New(repo Repository, jwtIssuer *jwt.Issuer, accessMinutes, refreshDays int,
 		refreshDur:              time.Duration(refreshDays) * 24 * time.Hour,
 		passwordResetBaseURL:    strings.TrimSuffix(passwordResetBaseURL, "/"),
 		passwordResetReturnLink: passwordResetReturnLink && passwordResetBaseURL != "",
+		passwordResetSender:     passwordResetSender,
 	}
 }
 
@@ -214,13 +222,17 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) (*ForgotPass
 	if err := s.repo.CreatePasswordResetToken(ctx, u.ID, hash, expAt); err != nil {
 		return nil, common.NewDomainError(common.CodeInternalError, "Request failed.", err)
 	}
-	var result *ForgotPasswordResult
-	if s.passwordResetReturnLink && s.passwordResetBaseURL != "" {
-		result = &ForgotPasswordResult{
-			ResetLink: s.passwordResetBaseURL + "/reset-password?token=" + plain,
-		}
+	resetLink := ""
+	if s.passwordResetBaseURL != "" {
+		resetLink = s.passwordResetBaseURL + "/reset-password?token=" + plain
 	}
-	// TODO: when email is configured, send email with result.ResetLink (or same URL) to u.Email
+	if s.passwordResetSender != nil && resetLink != "" {
+		_ = s.passwordResetSender.SendPasswordReset(u.Email, resetLink)
+	}
+	var result *ForgotPasswordResult
+	if s.passwordResetReturnLink && resetLink != "" {
+		result = &ForgotPasswordResult{ResetLink: resetLink}
+	}
 	return result, nil
 }
 
