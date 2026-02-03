@@ -1,30 +1,16 @@
 import { Button } from "@/components/ui/button";
 import { useNavigate } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
-import { useEffect, useState } from "react";
-import type { User } from "@supabase/supabase-js";
+import { useAuth } from "@/contexts/AuthContext";
 import { LogOut, User as UserIcon, Home, Layout, Pencil, FileText } from "lucide-react";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import { WorkspaceSwitcher } from "@/components/workspace/WorkspaceSwitcher";
 
 export const Navbar = () => {
   const navigate = useNavigate();
-  const [user, setUser] = useState<User | null>(null);
-
-  useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      setUser(session?.user ?? null);
-    });
-
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
-      setUser(session?.user ?? null);
-    });
-
-    return () => subscription.unsubscribe();
-  }, []);
+  const { user, logout } = useAuth();
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    await logout();
     navigate("/");
   };
 
@@ -32,19 +18,19 @@ export const Navbar = () => {
     <nav className="border-b border-border bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 sticky top-0 z-50 w-full">
       <div className="w-full px-4 h-16 flex items-center justify-between">
         <div className="flex items-center gap-6">
-          <button 
+          <button
             onClick={() => navigate("/")}
             className="text-xl font-bold bg-gradient-to-r from-primary to-primary/80 bg-clip-text text-transparent"
           >
             DiagramGen
           </button>
-          
+
           {user && (
             <div className="hidden md:block">
               <WorkspaceSwitcher />
             </div>
           )}
-          
+
           {user && (
             <div className="hidden md:flex items-center gap-4">
               <Button
@@ -86,7 +72,7 @@ export const Navbar = () => {
             </div>
           )}
         </div>
-        
+
         <div className="flex items-center gap-3">
           <ThemeToggle />
           {user ? (

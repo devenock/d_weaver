@@ -1,7 +1,7 @@
 import { useEffect, useState, useMemo } from "react";
 import { useNavigate } from "react-router-dom";
+import { useAuth } from "@/contexts/AuthContext";
 import { supabase } from "@/integrations/supabase/client";
-import type { User } from "@supabase/supabase-js";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/dashboard/AppSidebar";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
@@ -19,7 +19,7 @@ type ViewMode = "dashboard" | "editor" | "whiteboard";
 const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const [user, setUser] = useState<User | null>(null);
+  const { user, loading: authLoading, logout } = useAuth();
   const [diagrams, setDiagrams] = useState<Diagram[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
@@ -69,31 +69,11 @@ const Dashboard = () => {
   }, [diagrams, searchQuery]);
 
   useEffect(() => {
-    const checkAuth = async () => {
-      const {
-        data: { session },
-      } = await supabase.auth.getSession();
-      if (!session) {
-        navigate("/login", { replace: true });
-        return;
-      }
-      setUser(session.user);
-    };
-
-    checkAuth();
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (!session) {
-        navigate("/login", { replace: true });
-        return;
-      }
-      setUser(session.user);
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate]);
+    if (authLoading) return;
+    if (!user) {
+      navigate("/login", { replace: true });
+    }
+  }, [authLoading, user, navigate]);
 
   useEffect(() => {
     if (!workspacesLoading && user) {
@@ -154,9 +134,17 @@ const Dashboard = () => {
   };
 
   const handleSignOut = async () => {
-    await supabase.auth.signOut();
+    await logout();
     navigate("/");
   };
+
+  if (authLoading || !user) {
+    return (
+      <div className="min-h-screen bg-background flex items-center justify-center">
+        <p className="text-muted-foreground">Loading...</p>
+      </div>
+    );
+  }
 
   if (loading || workspacesLoading) {
     return (

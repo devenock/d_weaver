@@ -74,7 +74,7 @@ import {
 } from "lucide-react";
 import { toast } from "sonner";
 import { supabase } from "@/integrations/supabase/client";
-import type { User } from "@supabase/supabase-js";
+import type { ApiUser } from "@/lib/auth-api";
 import { Canvas as FabricCanvas, Rect, Circle, Textbox, Polygon, Path, FabricObject, Group as FabricGroup, FabricImage, ActiveSelection } from "fabric";
 import { LayersPanel } from "./editor/LayersPanel";
 import { AlignmentTools } from "./editor/AlignmentTools";
@@ -87,7 +87,7 @@ import { createIconDataUrl } from "./editor/ShapeRenderer";
 
 interface EmbeddedEditorProps {
   diagramId?: string | null;
-  user: User | null;
+  user: ApiUser | null;
   onClose: () => void;
   onSave?: () => void;
   workspaceId?: string;
@@ -2267,7 +2267,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 }
 
 // Comments Panel component
-function CommentsPanel({ diagramId, user: _user }: { diagramId: string; user: User | null }) {
+function CommentsPanel({ diagramId, user: _user }: { diagramId: string; user: ApiUser | null }) {
   const [comments, setComments] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -2368,7 +2368,7 @@ function CommentsPanel({ diagramId, user: _user }: { diagramId: string; user: Us
 }
 
 // Comment Input component
-function CommentInput({ diagramId, user }: { diagramId: string; user: User }) {
+function CommentInput({ diagramId, user }: { diagramId: string; user: ApiUser }) {
   const [newComment, setNewComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
 

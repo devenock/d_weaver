@@ -20,6 +20,10 @@ export default defineConfig({
   },
   server: {
     proxy: {
+      "/api": {
+        target: "http://localhost:8200",
+        changeOrigin: true,
+      },
       "/api-docs": {
         target: "http://localhost:8200",
         changeOrigin: true,

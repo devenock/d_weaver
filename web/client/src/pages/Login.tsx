@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useState } from "react";
 import { Link, useNavigate, useSearchParams } from "react-router-dom";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth, ApiError } from "@/contexts/AuthContext";
 import { AuthShell } from "@/components/auth/AuthShell";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -12,6 +12,7 @@ export default function Login() {
   const navigate = useNavigate();
   const [searchParams] = useSearchParams();
   const { toast } = useToast();
+  const { login, isAuthenticated, loading: authLoading } = useAuth();
 
   const [loading, setLoading] = useState(false);
   const [email, setEmail] = useState("");
@@ -23,37 +24,27 @@ export default function Login() {
   }, [searchParams]);
 
   useEffect(() => {
-    supabase.auth.getSession().then(({ data: { session } }) => {
-      if (session) navigate("/dashboard", { replace: true });
-    });
-
-    const {
-      data: { subscription },
-    } = supabase.auth.onAuthStateChange((_event, session) => {
-      if (session) navigate(redirectTo, { replace: true });
-    });
-
-    return () => subscription.unsubscribe();
-  }, [navigate, redirectTo]);
+    if (authLoading) return;
+    if (isAuthenticated) navigate(redirectTo, { replace: true });
+  }, [authLoading, isAuthenticated, navigate, redirectTo]);
 
   const handleSignIn = async (e: React.FormEvent) => {
     e.preventDefault();
     setLoading(true);
 
-    const { error } = await supabase.auth.signInWithPassword({
-      email,
-      password,
-    });
-
-    if (error) {
+    try {
+      await login(email, password);
+      navigate(redirectTo, { replace: true });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.body.message : "Sign in failed";
       toast({
         title: "Sign in failed",
-        description: error.message,
+        description: message,
         variant: "destructive",
       });
+    } finally {
+      setLoading(false);
     }
-
-    setLoading(false);
   };
 
   return (
@@ -121,7 +112,7 @@ export default function Login() {
         </form>
 
         <div className="mt-6 text-center text-sm text-muted-foreground">
-          Don’t have an account?{" "}
+          Don't have an account?{" "}
           <Link to="/signup" className="font-medium text-primary hover:underline">
             Create one
           </Link>
@@ -130,4 +121,3 @@ export default function Login() {
     </AuthShell>
   );
 }
-

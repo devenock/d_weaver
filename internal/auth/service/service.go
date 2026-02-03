@@ -139,9 +139,10 @@ func (s *Service) Logout(ctx context.Context, refreshToken string) error {
 
 // RefreshResult is returned from Refresh.
 type RefreshResult struct {
-	AccessToken  string `json:"access_token"`
-	RefreshToken string `json:"refresh_token"`
-	ExpiresIn    int    `json:"expires_in"`
+	User         model.UserResponse `json:"user"`
+	AccessToken  string             `json:"access_token"`
+	RefreshToken string             `json:"refresh_token"`
+	ExpiresIn    int                `json:"expires_in"`
 }
 
 // Refresh validates the refresh token and returns a new access/refresh pair (PDF: token refresh).
@@ -174,8 +175,9 @@ func (s *Service) Refresh(ctx context.Context, refreshToken string) (*RefreshRes
 		_ = err
 	}
 	return &RefreshResult{
+		User:         model.FromUser(u),
 		AccessToken:  access,
-		RefreshToken:  plainRef,
+		RefreshToken: plainRef,
 		ExpiresIn:    int(s.accessDur.Seconds()),
 	}, nil
 }

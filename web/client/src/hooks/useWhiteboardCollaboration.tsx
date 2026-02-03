@@ -1,6 +1,11 @@
 import { useEffect, useState, useCallback, useRef } from "react";
 import { supabase } from "@/integrations/supabase/client";
-import type { User } from "@supabase/supabase-js";
+
+/** Minimal user shape for collaboration (id required). */
+export interface CollaborationUser {
+  id: string;
+  email?: string;
+}
 
 interface CursorPosition {
   x: number;
@@ -32,7 +37,7 @@ const COLLABORATOR_COLORS = [
 
 export function useWhiteboardCollaboration(
   whiteboardId: string | null,
-  user: User | null,
+  user: CollaborationUser | null,
 ) {
   const [collaborators, setCollaborators] = useState<CollaboratorPresence[]>(
     [],
