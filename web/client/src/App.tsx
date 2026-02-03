@@ -10,6 +10,8 @@ import Index from "./pages/Index";
 // import Auth from "./pages/Auth";
 import Login from "./pages/Login";
 import Signup from "./pages/Signup";
+import ForgotPassword from "./pages/ForgotPassword";
+import ResetPassword from "./pages/ResetPassword";
 // import Gallery from "./pages/Gallery";
 import Dashboard from "./pages/Dashboard";
 // import Whiteboard from "./pages/Whiteboard";
@@ -34,6 +36,8 @@ const App = () => (
             {/* <Route path="/auth" element={<Auth />} /> */}
             <Route path="/login" element={<Login />} />
             <Route path="/signup" element={<Signup />} />
+            <Route path="/forgot-password" element={<ForgotPassword />} />
+            <Route path="/reset-password" element={<ResetPassword />} />
             {/* <Route path="/gallery" element={<Gallery />} /> */}
             <Route path="/join-workspace" element={<JoinWorkspace />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
