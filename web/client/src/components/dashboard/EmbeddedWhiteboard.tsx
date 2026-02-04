@@ -9,8 +9,10 @@ import {
   Users, GitBranch, Link2, Unlink, Plus
 } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import type { ApiUser } from "@/lib/auth-api";
+import { getDiagram, createDiagram, updateDiagram, uploadDiagramImage } from "@/lib/diagram-api";
+import { ApiError } from "@/lib/api";
 import jsPDF from "jspdf";
 import { useWhiteboardHistory } from "@/hooks/useWhiteboardHistory";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
@@ -45,6 +47,7 @@ const STICKY_COLORS = [
 ];
 
 export function EmbeddedWhiteboard({ diagramId, user, onClose: _onClose, onSave }: EmbeddedWhiteboardProps) {
+  const { getAccessToken } = useAuth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
@@ -257,33 +260,27 @@ export function EmbeddedWhiteboard({ diagramId, user, onClose: _onClose, onSave 
   useEffect(() => {
     const loadDiagram = async () => {
       if (!diagramId || !fabricCanvas) return;
+      const token = getAccessToken();
+      if (!token) return;
 
       try {
-        const { data, error } = await supabase
-          .from("diagrams")
-          .select("*")
-          .eq("id", diagramId)
-          .single();
+        const data = await getDiagram(token, diagramId);
+        setWhiteboardTitle(data.title);
+        setCurrentDiagramId(data.id);
 
-        if (error) throw error;
-
-        if (data) {
-          setWhiteboardTitle(data.title);
-          setCurrentDiagramId(data.id);
-
-          if (data.content && data.content !== "whiteboard") {
-            const canvasData = JSON.parse(data.content);
-            await fabricCanvas.loadFromJSON(canvasData);
-            fabricCanvas.renderAll();
-          }
+        if (data.content && data.content !== "whiteboard") {
+          const canvasData = JSON.parse(data.content);
+          await fabricCanvas.loadFromJSON(canvasData);
+          fabricCanvas.renderAll();
         }
-      } catch (error: any) {
-        toast.error("Failed to load whiteboard: " + error.message);
+      } catch (err) {
+        const message = err instanceof ApiError ? err.body.message : "Failed to load whiteboard";
+        toast.error(message);
       }
     };
 
     loadDiagram();
-  }, [diagramId, fabricCanvas]);
+  }, [diagramId, fabricCanvas, getAccessToken]);
 
   useEffect(() => {
     if (!fabricCanvas) return;
@@ -408,6 +405,11 @@ export function EmbeddedWhiteboard({ diagramId, user, onClose: _onClose, onSave 
       toast.error("Please sign in to save your whiteboard");
       return;
     }
+    const token = getAccessToken();
+    if (!token) {
+      toast.error("Not authenticated");
+      return;
+    }
 
     if (!fabricCanvas) return;
 
@@ -451,52 +453,32 @@ export function EmbeddedWhiteboard({ diagramId, user, onClose: _onClose, onSave 
 
       const response = await fetch(dataURL);
       const blob = await response.blob();
-
-      const fileName = `${user.id}/${Date.now()}-whiteboard.png`;
-      const { error: uploadError } = await supabase.storage
-        .from("diagrams")
-        .upload(fileName, blob, { contentType: "image/png", upsert: false });
-
-      if (uploadError) throw uploadError;
-
-      const {
-        data: { publicUrl },
-      } = supabase.storage.from("diagrams").getPublicUrl(fileName);
+      const file = new File([blob], "whiteboard.png", { type: "image/png" });
       const canvasJSON = JSON.stringify(fabricCanvas.toJSON());
 
       if (currentDiagramId) {
-        const { error } = await supabase
-          .from("diagrams")
-          .update({
-            title: whiteboardTitle,
-            content: canvasJSON,
-            image_url: publicUrl,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", currentDiagramId);
-
-        if (error) throw error;
+        await uploadDiagramImage(token, currentDiagramId, file);
+        await updateDiagram(token, currentDiagramId, {
+          title: whiteboardTitle,
+          content: canvasJSON,
+          diagram_type: "whiteboard",
+        });
       } else {
-        const { data, error } = await supabase
-          .from("diagrams")
-          .insert({
-            title: whiteboardTitle,
-            content: canvasJSON,
-            diagram_type: "whiteboard",
-            image_url: publicUrl,
-            user_id: user.id,
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-        if (data) setCurrentDiagramId(data.id);
+        const created = await createDiagram(token, {
+          title: whiteboardTitle,
+          content: canvasJSON,
+          diagram_type: "whiteboard",
+          is_public: false,
+        });
+        setCurrentDiagramId(created.id);
+        await uploadDiagramImage(token, created.id, file);
       }
 
       toast.success("Whiteboard saved successfully!");
       onSave?.();
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (err) {
+      const message = err instanceof ApiError ? err.body.message : "Failed to save whiteboard";
+      toast.error(message);
     } finally {
       setSaving(false);
     }
