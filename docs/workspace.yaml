@@ -24,7 +24,7 @@ paths:
     get:
       tags: [workspaces]
       summary: List workspaces
-      description: Returns workspaces where the current user is a member.
+      description: Returns workspaces where the current user is a member. Each item includes the current user's role (owner, admin, member, viewer).
       operationId: listWorkspaces
       responses:
         '200':
@@ -405,13 +405,24 @@ components:
         created_at:
           type: string
           format: date-time
+    WorkspaceWithRoleResponse:
+      description: Workspace plus the current user's role (used in list response).
+      allOf:
+        - $ref: '#/components/schemas/WorkspaceResponse'
+        - type: object
+          required: [role]
+          properties:
+            role:
+              type: string
+              enum: [owner, admin, member, viewer]
     WorkspaceListResponse:
       type: object
+      description: GET /workspaces returns { "data": [ WorkspaceWithRoleResponse, ... ] }.
       properties:
         data:
           type: array
           items:
-            $ref: '#/components/schemas/WorkspaceResponse'
+            $ref: '#/components/schemas/WorkspaceWithRoleResponse'
     WorkspaceDataResponse:
       type: object
       properties:
