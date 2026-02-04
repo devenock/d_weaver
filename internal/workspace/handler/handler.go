@@ -8,6 +8,7 @@ import (
 	"github.com/devenock/d_weaver/internal/common"
 	"github.com/devenock/d_weaver/internal/workspace/model"
 	"github.com/devenock/d_weaver/internal/workspace/service"
+	"github.com/devenock/d_weaver/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -16,11 +17,12 @@ import (
 type Handler struct {
 	svc    *service.Service
 	issuer *jwt.Issuer
+	log    logger.Logger
 }
 
 // New returns a workspace HTTP handler. Pass the JWT issuer for RequireAuth.
-func New(svc *service.Service, issuer *jwt.Issuer) *Handler {
-	return &Handler{svc: svc, issuer: issuer}
+func New(svc *service.Service, issuer *jwt.Issuer, log logger.Logger) *Handler {
+	return &Handler{svc: svc, issuer: issuer, log: log}
 }
 
 // Register mounts workspace routes on g with RequireAuth middleware.
@@ -63,6 +65,9 @@ func (h *Handler) create(c *gin.Context) {
 	}
 	resp, err := h.svc.CreateWorkspace(c.Request.Context(), userID, req.Name, req.Description, req.Color, req.Tags)
 	if err != nil {
+		if h.log != nil {
+			h.log.Error().Err(err).Str("request_id", c.GetHeader("X-Request-ID")).Msg("create workspace failed")
+		}
 		common.WriteErrorFromDomain(c, err)
 		return
 	}

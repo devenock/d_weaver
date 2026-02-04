@@ -143,7 +143,7 @@ func New(cfg *config.Config, log pkglogger.Logger) (*App, error) {
 
 	workspaceRepo := workspacerepo.New(pool)
 	workspaceSvc := workspacesvc.New(workspaceRepo)
-	workspaceHandler := workspacehandler.New(workspaceSvc, jwtIssuer)
+	workspaceHandler := workspacehandler.New(workspaceSvc, jwtIssuer, log)
 	workspaceHandler.Register(v1)
 
 	diagramRepo := diagramrepo.New(pool)
