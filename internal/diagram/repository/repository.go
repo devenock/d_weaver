@@ -83,9 +83,9 @@ func (r *Repository) ListVisibleByUserID(ctx context.Context, userID uuid.UUID) 
 		`SELECT d.id, d.title, d.content, d.diagram_type, d.image_url, d.is_public, d.user_id, d.workspace_id, d.created_at, d.updated_at
 		 FROM diagrams d
 		 LEFT JOIN workspace_members m ON d.workspace_id = m.workspace_id AND m.user_id = $1
-		 WHERE d.user_id = $1 OR m.user_id = $1
+		 WHERE d.user_id = $2 OR m.user_id = $3
 		 ORDER BY d.updated_at DESC`,
-		userID, userID,
+		userID, userID, userID,
 	)
 	if err != nil {
 		return nil, err

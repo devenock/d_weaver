@@ -101,8 +101,9 @@ func Load() (*Config, error) {
 	v := viper.New()
 	v.SetEnvKeyReplacer(strings.NewReplacer(".", "_"))
 	v.AutomaticEnv()
-	// Unmarshal does not apply AutomaticEnv to nested keys; bind so Docker/env DB_URL is used.
+	// Unmarshal does not apply AutomaticEnv to nested keys; bind so Docker/env are used.
 	v.BindEnv("db.url", "DB_URL")
+	v.BindEnv("db.migrations_dir", "DB_MIGRATIONS_DIR")
 	v.BindEnv("redis.url", "REDIS_URL")
 
 	// defaults

@@ -2,10 +2,8 @@
 
 ## Current State
 
-The following documentation files exist but are **empty**:
-
-- `api.md` - Should contain API documentation
-- `architecture.md` - Should contain architecture documentation
+- **`api.md`** — API overview, dashboard endpoint tables, response format, and pointers to OpenAPI. Kept in sync with the backend and React dashboard.
+- **`architecture.md`** — Empty; to be populated with architecture diagrams and component descriptions.
 
 ## Reference Document
 
@@ -13,13 +11,7 @@ The following documentation files exist but are **empty**:
 
 ## Action Items
 
-1. **api.md** - Should be populated with:
-   - API endpoint documentation
-   - Request/response schemas
-   - Authentication details
-   - Error codes and responses
-
-2. **architecture.md** - Should be populated with:
+1. **architecture.md** — To be populated with:
    - System architecture diagrams
    - Component descriptions
    - Data flow diagrams
@@ -27,7 +19,7 @@ The following documentation files exist but are **empty**:
 
 ## Note
 
-The project currently uses:
-- `AGENTS.md` (root) - Development guidelines and standards
-- `api/openapi/auth.yaml` - OpenAPI spec for auth module (embedded in API)
-- PDF requirements document - Complete backend requirements
+The project uses:
+- **`AGENTS.md`** (repo root) — Development guidelines and standards.
+- **OpenAPI specs** — `auth.yaml`, `workspace.yaml`, `diagram.yaml`, `ai.yaml`, `realtime.yaml` in this directory; served at `GET /api-docs/{auth,workspace,diagram,ai,realtime}` and via Swagger UI at `GET /swagger`.
+- **PDF** — `DWeaver Backend Project Requirements.pdf` as source of truth.

@@ -26,11 +26,14 @@ func isErrNoRows(err error) bool {
 
 // Create creates a workspace and adds the creator as owner. Returns the workspace.
 func (r *Repository) Create(ctx context.Context, name, description, color string, tags []string, createdBy uuid.UUID) (*model.Workspace, error) {
+	if tags == nil {
+		tags = []string{}
+	}
 	var w model.Workspace
 	err := r.pool.QueryRow(ctx,
 		`INSERT INTO workspaces (name, description, color, tags, created_by)
 		 VALUES ($1, $2, $3, $4, $5)
-		 RETURNING id, name, description, color, tags, created_by, created_at, updated_at`,
+		 RETURNING id, name, COALESCE(description, ''), COALESCE(color, ''), COALESCE(tags, '{}'), created_by, created_at, updated_at`,
 		name, nullIfEmpty(description), nullIfEmpty(color), tags, createdBy,
 	).Scan(&w.ID, &w.Name, &w.Description, &w.Color, &w.Tags, &w.CreatedBy, &w.CreatedAt, &w.UpdatedAt)
 	if err != nil {
@@ -38,8 +41,8 @@ func (r *Repository) Create(ctx context.Context, name, description, color string
 	}
 	_, err = r.pool.Exec(ctx,
 		`INSERT INTO workspace_members (workspace_id, user_id, role, invited_by)
-		 VALUES ($1, $2, 'owner', $2)`,
-		w.ID, createdBy,
+		 VALUES ($1, $2, 'owner', $3)`,
+		w.ID, createdBy, createdBy,
 	)
 	if err != nil {
 		return nil, err
@@ -66,26 +69,35 @@ func (r *Repository) GetByID(ctx context.Context, id uuid.UUID) (*model.Workspac
 
 // ListByUserID returns workspaces where the user is a member (via workspace_members).
 func (r *Repository) ListByUserID(ctx context.Context, userID uuid.UUID) ([]*model.Workspace, error) {
+	list, _, err := r.ListByUserIDWithRole(ctx, userID)
+	return list, err
+}
+
+// ListByUserIDWithRole returns workspaces where the user is a member and their role in each.
+func (r *Repository) ListByUserIDWithRole(ctx context.Context, userID uuid.UUID) ([]*model.Workspace, []model.Role, error) {
 	rows, err := r.pool.Query(ctx,
-		`SELECT w.id, w.name, COALESCE(w.description, ''), COALESCE(w.color, ''), COALESCE(w.tags, '{}'), w.created_by, w.created_at, w.updated_at
+		`SELECT w.id, w.name, COALESCE(w.description, ''), COALESCE(w.color, ''), COALESCE(w.tags, '{}'), w.created_by, w.created_at, w.updated_at, m.role
 		 FROM workspaces w
 		 INNER JOIN workspace_members m ON m.workspace_id = w.id AND m.user_id = $1
 		 ORDER BY w.updated_at DESC`,
 		userID,
 	)
 	if err != nil {
-		return nil, err
+		return nil, nil, err
 	}
 	defer rows.Close()
-	var list []*model.Workspace
+	var workspaces []*model.Workspace
+	var roles []model.Role
 	for rows.Next() {
 		var w model.Workspace
-		if err := rows.Scan(&w.ID, &w.Name, &w.Description, &w.Color, &w.Tags, &w.CreatedBy, &w.CreatedAt, &w.UpdatedAt); err != nil {
-			return nil, err
+		var role model.Role
+		if err := rows.Scan(&w.ID, &w.Name, &w.Description, &w.Color, &w.Tags, &w.CreatedBy, &w.CreatedAt, &w.UpdatedAt, &role); err != nil {
+			return nil, nil, err
 		}
-		list = append(list, &w)
+		workspaces = append(workspaces, &w)
+		roles = append(roles, role)
 	}
-	return list, rows.Err()
+	return workspaces, roles, rows.Err()
 }
 
 // Update updates workspace name, description, color, tags. Returns the updated workspace or nil if not found.

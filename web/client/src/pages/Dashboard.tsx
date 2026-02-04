@@ -1,7 +1,6 @@
-import { useEffect, useState, useMemo } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useNavigate } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
-import { supabase } from "@/integrations/supabase/client";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/dashboard/AppSidebar";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
@@ -9,18 +8,18 @@ import { DashboardContent } from "@/components/dashboard/DashboardContent";
 import { EmbeddedEditor } from "@/components/dashboard/EmbeddedEditor";
 import { EmbeddedWhiteboard } from "@/components/dashboard/EmbeddedWhiteboard";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
-import type { Tables } from "@/integrations/supabase/types";
+import { listDiagrams } from "@/lib/diagram-api";
+import type { DiagramResponse } from "@/lib/api-types";
 import { useToast } from "@/hooks/use-toast";
-
-type Diagram = Tables<"diagrams">;
+import { getApiErrorMessage } from "@/lib/api";
 
 type ViewMode = "dashboard" | "editor" | "whiteboard";
 
 const Dashboard = () => {
   const navigate = useNavigate();
   const { toast } = useToast();
-  const { user, loading: authLoading, logout } = useAuth();
-  const [diagrams, setDiagrams] = useState<Diagram[]>([]);
+  const { user, loading: authLoading, logout, getAccessToken } = useAuth();
+  const [diagrams, setDiagrams] = useState<DiagramResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedDiagramId, setSelectedDiagramId] = useState<string | null>(
@@ -36,37 +35,61 @@ const Dashboard = () => {
     createWorkspace,
   } = useWorkspaces();
 
-  // Filter diagrams and whiteboards
+  const loadDiagrams = useCallback(async () => {
+    const token = getAccessToken();
+    if (!token) {
+      setLoading(false);
+      return;
+    }
+    try {
+      const list = await listDiagrams(token);
+      setDiagrams(list);
+    } catch (err) {
+      toast({ title: "Error", description: getApiErrorMessage(err, "Failed to load diagrams"), variant: "destructive" });
+      setDiagrams([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [getAccessToken, toast]);
+
+  // Filter by current workspace (personal = null workspace_id)
+  const diagramsInScope = useMemo(() => {
+    if (!currentWorkspace) {
+      return diagrams.filter((d) => d.workspace_id == null);
+    }
+    return diagrams.filter((d) => d.workspace_id === currentWorkspace.id);
+  }, [diagrams, currentWorkspace]);
+
   const diagramsList = useMemo(
-    () => diagrams.filter((d) => d.diagram_type !== "whiteboard"),
-    [diagrams],
+    () => diagramsInScope.filter((d) => d.diagram_type !== "whiteboard"),
+    [diagramsInScope],
   );
 
   const whiteboardsList = useMemo(
-    () => diagrams.filter((d) => d.diagram_type === "whiteboard"),
-    [diagrams],
+    () => diagramsInScope.filter((d) => d.diagram_type === "whiteboard"),
+    [diagramsInScope],
   );
 
   const recentDiagrams = useMemo(
     () =>
-      [...diagrams]
+      [...diagramsInScope]
         .sort(
           (a, b) =>
             new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
         )
         .slice(0, 5),
-    [diagrams],
+    [diagramsInScope],
   );
 
   const filteredDiagrams = useMemo(() => {
-    if (!searchQuery.trim()) return diagrams;
+    if (!searchQuery.trim()) return diagramsInScope;
     const query = searchQuery.toLowerCase();
-    return diagrams.filter(
+    return diagramsInScope.filter(
       (d) =>
         d.title.toLowerCase().includes(query) ||
         d.diagram_type.toLowerCase().includes(query),
     );
-  }, [diagrams, searchQuery]);
+  }, [diagramsInScope, searchQuery]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -77,38 +100,12 @@ const Dashboard = () => {
 
   useEffect(() => {
     if (!workspacesLoading && user) {
+      setLoading(true);
       loadDiagrams();
     }
-  }, [currentWorkspace, workspacesLoading, user]);
+  }, [currentWorkspace?.id, workspacesLoading, user, loadDiagrams]);
 
-  const loadDiagrams = async () => {
-    try {
-      let query = supabase
-        .from("diagrams")
-        .select("*")
-        .order("updated_at", { ascending: false });
-
-      if (currentWorkspace) {
-        query = query.eq("workspace_id", currentWorkspace.id);
-      } else {
-        query = query.is("workspace_id", null);
-      }
-
-      const { data, error } = await query;
-      if (error) throw error;
-      setDiagrams(data || []);
-    } catch (error: any) {
-      toast({
-        title: "Error",
-        description: error.message,
-        variant: "destructive",
-      });
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleDiagramClick = (diagram: Diagram) => {
+  const handleDiagramClick = (diagram: DiagramResponse) => {
     setSelectedDiagramId(diagram.id);
     if (diagram.diagram_type === "whiteboard") {
       setViewMode("whiteboard");
@@ -183,6 +180,7 @@ const Dashboard = () => {
 
           {viewMode === "dashboard" && (
             <DashboardContent
+              accessToken={getAccessToken() ?? ""}
               diagrams={filteredDiagrams}
               loading={loading}
               onDiagramClick={handleDiagramClick}

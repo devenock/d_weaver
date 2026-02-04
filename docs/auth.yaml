@@ -260,12 +260,15 @@ components:
         data:
           type: object
           properties:
+            user:
+              $ref: '#/components/schemas/UserResponse'
             access_token:
               type: string
             refresh_token:
               type: string
             expires_in:
               type: integer
+              description: Access token TTL in seconds
 
     ErrorBody:
       type: object

@@ -14,6 +14,7 @@ type Repository interface {
 	Create(ctx context.Context, name, description, color string, tags []string, createdBy uuid.UUID) (*model.Workspace, error)
 	GetByID(ctx context.Context, id uuid.UUID) (*model.Workspace, error)
 	ListByUserID(ctx context.Context, userID uuid.UUID) ([]*model.Workspace, error)
+	ListByUserIDWithRole(ctx context.Context, userID uuid.UUID) ([]*model.Workspace, []model.Role, error)
 	Update(ctx context.Context, id uuid.UUID, name, description, color string, tags []string) (*model.Workspace, error)
 	Delete(ctx context.Context, id uuid.UUID) (bool, error)
 	GetMember(ctx context.Context, workspaceID, userID uuid.UUID) (*model.WorkspaceMember, error)
@@ -64,15 +65,15 @@ func (s *Service) EnsureOwner(m *model.WorkspaceMember) error {
 	return nil
 }
 
-// ListWorkspaces returns workspaces for the user (must be a member).
-func (s *Service) ListWorkspaces(ctx context.Context, userID uuid.UUID) ([]model.WorkspaceResponse, error) {
-	list, err := s.repo.ListByUserID(ctx, userID)
+// ListWorkspaces returns workspaces for the user with their role in each (must be a member).
+func (s *Service) ListWorkspaces(ctx context.Context, userID uuid.UUID) ([]model.WorkspaceWithRoleResponse, error) {
+	workspaces, roles, err := s.repo.ListByUserIDWithRole(ctx, userID)
 	if err != nil {
 		return nil, common.NewDomainError(common.CodeInternalError, "Failed to list workspaces.", err)
 	}
-	out := make([]model.WorkspaceResponse, len(list))
-	for i, w := range list {
-		out[i] = model.FromWorkspace(w)
+	out := make([]model.WorkspaceWithRoleResponse, len(workspaces))
+	for i, w := range workspaces {
+		out[i] = model.FromWorkspaceWithRole(w, roles[i])
 	}
 	return out, nil
 }

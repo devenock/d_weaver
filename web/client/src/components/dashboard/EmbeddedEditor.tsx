@@ -73,8 +73,11 @@ import {
   Keyboard,
 } from "lucide-react";
 import { toast } from "sonner";
-import { supabase } from "@/integrations/supabase/client";
+import { useAuth } from "@/contexts/AuthContext";
 import type { ApiUser } from "@/lib/auth-api";
+import { getDiagram, createDiagram, updateDiagram, uploadDiagramImage, listComments, addComment } from "@/lib/diagram-api";
+import { getApiErrorMessage } from "@/lib/api";
+import type { CommentResponse } from "@/lib/api-types";
 import { Canvas as FabricCanvas, Rect, Circle, Textbox, Polygon, Path, FabricObject, Group as FabricGroup, FabricImage, ActiveSelection } from "fabric";
 import { LayersPanel } from "./editor/LayersPanel";
 import { AlignmentTools } from "./editor/AlignmentTools";
@@ -181,6 +184,7 @@ const FONT_FAMILIES = [
 ];
 
 export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, workspaceId, onRequestNew }: EmbeddedEditorProps) {
+  const { getAccessToken } = useAuth();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
   const fabricCanvasRef = useRef<FabricCanvas | null>(null);
@@ -189,6 +193,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   const [diagramTitle, setDiagramTitle] = useState("Untitled Diagram");
   const [saving, setSaving] = useState(false);
   const [currentDiagramId, setCurrentDiagramId] = useState<string | null>(diagramId || null);
+  const [commentsVersion, setCommentsVersion] = useState(0);
   const [showComments, setShowComments] = useState(false);
   const [showProperties, setShowProperties] = useState(false);
   const [showLayers, setShowLayers] = useState(false);
@@ -431,81 +436,74 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   useEffect(() => {
     const loadDiagram = async () => {
       if (!diagramId || !fabricCanvas) return;
+      const token = getAccessToken();
+      if (!token) return;
 
       try {
-        const { data, error } = await supabase
-          .from("diagrams")
-          .select("*")
-          .eq("id", diagramId)
-          .single();
+        const data = await getDiagram(token, diagramId);
+        setDiagramTitle(data.title);
+        setCurrentDiagramId(data.id);
+        setHasUnsavedChanges(false);
 
-        if (error) throw error;
-
-        if (data) {
-          setDiagramTitle(data.title);
-          setCurrentDiagramId(data.id);
-          setHasUnsavedChanges(false);
-
-          try {
-            const canvasData = JSON.parse(data.content);
-            if (canvasData.objects) {
-              await fabricCanvas.loadFromJSON(canvasData, async () => {
-                // Restore images in groups after loading
-                const objects = fabricCanvas.getObjects();
-                for (const obj of objects) {
-                  if (obj.type === 'group') {
-                    const group = obj as FabricGroup;
-                    const groupObjects = group.getObjects();
-                    const updatedObjects: FabricObject[] = [];
+        try {
+          const canvasData = JSON.parse(data.content);
+          if (canvasData.objects) {
+            await fabricCanvas.loadFromJSON(canvasData, async () => {
+              // Restore images in groups after loading
+              const objects = fabricCanvas.getObjects();
+              for (const obj of objects) {
+                if (obj.type === 'group') {
+                  const group = obj as FabricGroup;
+                  const groupObjects = group.getObjects();
+                  const updatedObjects: FabricObject[] = [];
                     
-                    for (const childObj of groupObjects) {
-                      if (childObj.type === 'image') {
-                        const imgObj = childObj as any;
-                        if (imgObj.src && imgObj.src.startsWith('data:image')) {
-                          try {
-                            const img = await FabricImage.fromURL(imgObj.src);
-                            img.set({
-                              left: childObj.left || 0,
-                              top: childObj.top || 0,
-                              scaleX: childObj.scaleX || 1,
-                              scaleY: childObj.scaleY || 1,
-                              originX: childObj.originX || 'left',
-                              originY: childObj.originY || 'top',
-                              selectable: false,
-                              evented: false,
-                            });
-                            updatedObjects.push(img);
-                          } catch (err) {
-                            console.error('Failed to restore image:', err);
-                            updatedObjects.push(childObj);
-                          }
-                        } else {
+                  for (const childObj of groupObjects) {
+                    if (childObj.type === 'image') {
+                      const imgObj = childObj as any;
+                      if (imgObj.src && imgObj.src.startsWith('data:image')) {
+                        try {
+                          const img = await FabricImage.fromURL(imgObj.src);
+                          img.set({
+                            left: childObj.left || 0,
+                            top: childObj.top || 0,
+                            scaleX: childObj.scaleX || 1,
+                            scaleY: childObj.scaleY || 1,
+                            originX: childObj.originX || 'left',
+                            originY: childObj.originY || 'top',
+                            selectable: false,
+                            evented: false,
+                          });
+                          updatedObjects.push(img);
+                        } catch (err) {
+                          console.error('Failed to restore image:', err);
                           updatedObjects.push(childObj);
                         }
                       } else {
                         updatedObjects.push(childObj);
                       }
-                    }
-                    
-                    if (updatedObjects.length === groupObjects.length) {
-                      group.set('objects', updatedObjects);
+                    } else {
+                      updatedObjects.push(childObj);
                     }
                   }
+                    
+                  if (updatedObjects.length === groupObjects.length) {
+                    group.set('objects', updatedObjects);
+                  }
                 }
-                fabricCanvas.renderAll();
-              });
-            }
-          } catch {
-            // If not JSON, it might be mermaid code
+              }
+              fabricCanvas.renderAll();
+            });
           }
+        } catch {
+          // If not JSON, it might be mermaid code
         }
-      } catch (error: any) {
-        toast.error("Failed to load diagram: " + error.message);
+      } catch (err) {
+        toast.error(getApiErrorMessage(err, "Failed to load diagram"));
       }
     };
 
     loadDiagram();
-  }, [diagramId, fabricCanvas]);
+  }, [diagramId, fabricCanvas, getAccessToken]);
 
   // Find empty position for new shape
   const findEmptyPosition = useCallback(
@@ -1521,53 +1519,41 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
       const response = await fetch(dataURL);
       const blob = await response.blob();
-
-      const fileName = `${user.id}/${Date.now()}-diagram.png`;
-      const { error: uploadError } = await supabase.storage
-        .from("diagrams")
-        .upload(fileName, blob, { contentType: "image/png", upsert: false });
-
-      if (uploadError) throw uploadError;
-
-      const { data: { publicUrl } } = supabase.storage.from("diagrams").getPublicUrl(fileName);
+      const file = new File([blob], "diagram.png", { type: "image/png" });
       const canvasJSON = JSON.stringify(fabricCanvas.toJSON());
 
-      if (currentDiagramId) {
-        const { error } = await supabase
-          .from("diagrams")
-          .update({
-            title: diagramTitle,
-            content: canvasJSON,
-            image_url: publicUrl,
-            updated_at: new Date().toISOString(),
-          })
-          .eq("id", currentDiagramId);
+      const token = getAccessToken();
+      if (!token) {
+        toast.error("Not authenticated");
+        setSaving(false);
+        return;
+      }
 
-        if (error) throw error;
+      if (currentDiagramId) {
+        await uploadDiagramImage(token, currentDiagramId, file);
+        await updateDiagram(token, currentDiagramId, {
+          title: diagramTitle,
+          content: canvasJSON,
+          diagram_type: "visual",
+        });
         toast.success("Diagram updated successfully!");
       } else {
-        const { data, error } = await supabase
-          .from("diagrams")
-          .insert({
-            title: diagramTitle,
-            content: canvasJSON,
-            diagram_type: "visual",
-            image_url: publicUrl,
-            user_id: user.id,
-            workspace_id: workspaceId || null,
-          })
-          .select()
-          .single();
-
-        if (error) throw error;
-        if (data) setCurrentDiagramId(data.id);
+        const created = await createDiagram(token, {
+          title: diagramTitle,
+          content: canvasJSON,
+          diagram_type: "visual",
+          is_public: false,
+          workspace_id: workspaceId || null,
+        });
+        setCurrentDiagramId(created.id);
+        await uploadDiagramImage(token, created.id, file);
         toast.success("Diagram saved successfully!");
       }
 
       setHasUnsavedChanges(false);
       onSave?.();
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Failed to save diagram"));
     } finally {
       setSaving(false);
     }
@@ -2220,7 +2206,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         <ScrollArea className="flex-1">
           <div className="p-4 lg:p-5">
             {currentDiagramId ? (
-              <CommentsPanel diagramId={currentDiagramId} user={user} />
+              <CommentsPanel diagramId={currentDiagramId} user={user} accessToken={getAccessToken() ?? ""} commentsVersion={commentsVersion} />
             ) : (
               <div className="text-center text-muted-foreground py-10 lg:py-12">
                 <div className="w-14 h-14 lg:w-16 lg:h-16 rounded-full bg-muted/50 flex items-center justify-center mx-auto mb-3 lg:mb-4">
@@ -2233,7 +2219,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           </div>
         </ScrollArea>
 
-        {currentDiagramId && user && <CommentInput diagramId={currentDiagramId} user={user} />}
+        {currentDiagramId && user && <CommentInput diagramId={currentDiagramId} user={user} accessToken={getAccessToken() ?? ""} onCommentAdded={() => setCommentsVersion((v) => v + 1)} />}
       </div>
 
       {/* Unsaved Changes Dialog */}
@@ -2267,50 +2253,39 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 }
 
 // Comments Panel component
-function CommentsPanel({ diagramId, user: _user }: { diagramId: string; user: ApiUser | null }) {
-  const [comments, setComments] = useState<any[]>([]);
+function CommentsPanel({
+  diagramId,
+  user: _user,
+  accessToken,
+  commentsVersion,
+}: {
+  diagramId: string;
+  user: ApiUser | null;
+  accessToken: string;
+  commentsVersion: number;
+}) {
+  const [comments, setComments] = useState<CommentResponse[]>([]);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchComments();
-
-    const channel = supabase
-      .channel(`comments-${diagramId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "comments",
-          filter: `diagram_id=eq.${diagramId}`,
-        },
-        () => {
-          fetchComments();
-        }
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [diagramId]);
-
-  const fetchComments = async () => {
+  const fetchComments = useCallback(async () => {
+    if (!accessToken) {
+      setLoading(false);
+      return;
+    }
     try {
-      const { data, error } = await supabase
-        .from("comments")
-        .select("*")
-        .eq("diagram_id", diagramId)
-        .order("created_at", { ascending: true });
-
-      if (error) throw error;
-      setComments(data || []);
+      const data = await listComments(accessToken, diagramId);
+      setComments(data);
     } catch (error) {
       console.error("Failed to load comments", error);
+      setComments([]);
     } finally {
       setLoading(false);
     }
-  };
+  }, [accessToken, diagramId]);
+
+  useEffect(() => {
+    fetchComments();
+  }, [fetchComments, commentsVersion]);
 
   const formatTime = (dateString: string) => {
     const date = new Date(dateString);
@@ -2368,26 +2343,31 @@ function CommentsPanel({ diagramId, user: _user }: { diagramId: string; user: Ap
 }
 
 // Comment Input component
-function CommentInput({ diagramId, user }: { diagramId: string; user: ApiUser }) {
+function CommentInput({
+  diagramId,
+  user,
+  accessToken,
+  onCommentAdded,
+}: {
+  diagramId: string;
+  user: ApiUser;
+  accessToken: string;
+  onCommentAdded: () => void;
+}) {
   const [newComment, setNewComment] = useState("");
   const [submitting, setSubmitting] = useState(false);
 
   const handleSubmit = async () => {
-    if (!newComment.trim() || submitting) return;
+    if (!newComment.trim() || submitting || !accessToken) return;
 
     setSubmitting(true);
     try {
-      const { error } = await supabase.from("comments").insert({
-        diagram_id: diagramId,
-        user_id: user.id,
-        comment_text: newComment.trim(),
-      });
-
-      if (error) throw error;
+      await addComment(accessToken, diagramId, newComment.trim());
       setNewComment("");
+      onCommentAdded();
       toast.success("Comment added");
-    } catch (error: any) {
-      toast.error(error.message);
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Failed to add comment"));
     } finally {
       setSubmitting(false);
     }

@@ -21,19 +21,17 @@ import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/component
 import type { WorkspaceWithRole } from "@/hooks/useWorkspaces";
 import { CreateWorkspaceDialog } from "@/components/workspace/CreateWorkspaceDialog";
 import { WorkspaceSettingsDialog } from "@/components/workspace/WorkspaceSettingsDialog";
-import type { Tables } from "@/integrations/supabase/types";
-
-type Diagram = Tables<"diagrams">;
+import type { DiagramResponse } from "@/lib/api-types";
 
 interface AppSidebarProps {
   workspaces: WorkspaceWithRole[];
   currentWorkspace: WorkspaceWithRole | null;
-  diagrams: Diagram[];
-  whiteboards: Diagram[];
-  recentDiagrams: Diagram[];
+  diagrams: DiagramResponse[];
+  whiteboards: DiagramResponse[];
+  recentDiagrams: DiagramResponse[];
   onSelectWorkspace: (workspace: WorkspaceWithRole) => void;
-  onCreateWorkspace: (name: string, description?: string) => Promise<any>;
-  onDiagramClick: (diagram: Diagram) => void;
+  onCreateWorkspace: (name: string, description?: string) => Promise<unknown>;
+  onDiagramClick: (diagram: DiagramResponse) => void;
   onNewDiagram: () => void;
   onNewWhiteboard: () => void;
   onDiagramsClick?: () => void;
@@ -346,6 +344,7 @@ export function AppSidebar({
       <CreateWorkspaceDialog
         open={createWorkspaceOpen}
         onOpenChange={setCreateWorkspaceOpen}
+        onCreateWorkspace={_onCreateWorkspace}
       />
 
       {currentWorkspace && (

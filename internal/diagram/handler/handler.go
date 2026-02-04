@@ -13,6 +13,7 @@ import (
 	"github.com/devenock/d_weaver/internal/auth/middleware"
 	"github.com/devenock/d_weaver/internal/common"
 	"github.com/devenock/d_weaver/internal/diagram/service"
+	"github.com/devenock/d_weaver/pkg/logger"
 	"github.com/gin-gonic/gin"
 	"github.com/google/uuid"
 )
@@ -30,11 +31,12 @@ type Handler struct {
 	svc    *service.Service
 	issuer *jwt.Issuer
 	upload config.UploadConfig
+	log    logger.Logger
 }
 
 // New returns a diagram HTTP handler.
-func New(svc *service.Service, issuer *jwt.Issuer, upload config.UploadConfig) *Handler {
-	return &Handler{svc: svc, issuer: issuer, upload: upload}
+func New(svc *service.Service, issuer *jwt.Issuer, upload config.UploadConfig, log logger.Logger) *Handler {
+	return &Handler{svc: svc, issuer: issuer, upload: upload, log: log}
 }
 
 // Register mounts diagram routes on g with RequireAuth where needed.
@@ -59,6 +61,9 @@ func (h *Handler) list(c *gin.Context) {
 	userID := middleware.GetUserID(c)
 	list, err := h.svc.ListDiagrams(c.Request.Context(), userID)
 	if err != nil {
+		if h.log != nil {
+			h.log.Error().Err(err).Str("request_id", c.GetHeader("X-Request-ID")).Msg("list diagrams failed")
+		}
 		common.WriteErrorFromDomain(c, err)
 		return
 	}

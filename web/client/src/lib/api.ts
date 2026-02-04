@@ -11,6 +11,29 @@ export function getApiBaseUrl(): string {
   return origin;
 }
 
+/**
+ * Resolve diagram image_url for browser requests. Use this whenever you display
+ * or fetch a diagram's image_url (thumbnails, download, embed). If url is a path
+ * (e.g. /uploads/diagrams/...), prepends the API origin so the request hits the backend.
+ */
+export function resolveImageUrl(imageUrl: string | null | undefined): string | null {
+  if (!imageUrl) return null;
+  if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) return imageUrl;
+  const base = getApiBaseUrl();
+  if (!base) return imageUrl;
+  return base.replace(/\/+$/, "") + (imageUrl.startsWith("/") ? imageUrl : "/" + imageUrl);
+}
+
+/**
+ * Return a user-facing error message from an unknown error. Use when showing
+ * toasts or UI after API or fetch failures. Prefers ApiError.body.message.
+ */
+export function getApiErrorMessage(err: unknown, fallback = "Something went wrong"): string {
+  if (err instanceof ApiError) return err.body.message;
+  if (err instanceof Error) return err.message;
+  return fallback;
+}
+
 export interface ApiErrorBody {
   code: string;
   message: string;
@@ -72,6 +95,63 @@ export async function apiRequest<T>(
     });
   }
 
+  const envelope = json as SuccessEnvelope<T>;
+  return envelope.data as T;
+}
+
+/**
+ * Authenticated API request. Same as apiRequest but adds Authorization: Bearer <accessToken>.
+ * Use for all /workspaces and /diagrams (and other protected) endpoints.
+ * For FormData body (e.g. image upload), Content-Type is not set so the browser sends multipart/form-data with boundary.
+ */
+export async function apiRequestWithAuth<T>(
+  accessToken: string,
+  path: string,
+  options: RequestInit = {},
+): Promise<T> {
+  const base = getApiBaseUrl();
+  const p = path.startsWith("/") ? path : `/${path}`;
+  const url = base ? `${base.replace(/\/+$/, "")}${p}` : p;
+  const isFormData = options.body instanceof FormData;
+  const headers: Record<string, string> = {
+    Authorization: `Bearer ${accessToken}`,
+    ...(isFormData ? {} : { "Content-Type": "application/json" }),
+    ...(options.headers as Record<string, string>),
+  };
+  const res = await fetch(url, {
+    ...options,
+    headers,
+    credentials: "include",
+  });
+
+  const text = await res.text();
+  if (!res.ok) {
+    let body: ApiErrorBody;
+    try {
+      const json = text ? JSON.parse(text) : {};
+      body = {
+        code: (json as ApiErrorBody).code ?? "unknown",
+        message: (json as ApiErrorBody).message ?? "Request failed",
+        details: (json as ApiErrorBody).details,
+      };
+    } catch {
+      body = { code: "invalid_response", message: "Invalid JSON response" };
+    }
+    throw new ApiError(res.status, body);
+  }
+
+  if (res.status === 204 || !text) {
+    return undefined as T;
+  }
+  let json: SuccessEnvelope<T> | ApiErrorBody;
+  try {
+    json = JSON.parse(text);
+  } catch {
+    throw new ApiError(res.status, {
+      code: "invalid_response",
+      message: "Invalid JSON response",
+    });
+  }
   const envelope = json as SuccessEnvelope<T>;
   return envelope.data as T;
 }

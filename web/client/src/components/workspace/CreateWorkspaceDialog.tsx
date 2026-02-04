@@ -18,10 +18,13 @@ import { Loader2 } from "lucide-react";
 interface CreateWorkspaceDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
+  /** When provided, use this instead of the hook so the parent's workspace list updates. */
+  onCreateWorkspace?: (name: string, description?: string) => Promise<unknown>;
 }
 
-export function CreateWorkspaceDialog({ open, onOpenChange }: CreateWorkspaceDialogProps) {
-  const { createWorkspace } = useWorkspaces();
+export function CreateWorkspaceDialog({ open, onOpenChange, onCreateWorkspace }: CreateWorkspaceDialogProps) {
+  const { createWorkspace: createWorkspaceFromHook } = useWorkspaces();
+  const createWorkspace = onCreateWorkspace ?? createWorkspaceFromHook;
   const [name, setName] = useState("");
   const [description, setDescription] = useState("");
   const [isCreating, setIsCreating] = useState(false);
