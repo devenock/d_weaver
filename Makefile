@@ -1,7 +1,7 @@
 # DWeaver Makefile – run from repo root
 # Use: make help | make docker-up | make run-api | make client-dev | etc.
 
-.PHONY: help docker-up docker-down docker-build docker-rebuild docker-restart \
+.PHONY: help docker-up docker-down docker-build docker-rebuild docker-rebuild-api docker-restart \
 	docker-build-client docker-logs docker-logs-api docker-logs-client docker-logs-postgres docker-logs-redis docker-ps \
 	run-api build-api test-api lint-api migrate \
 	client-dev client-build client-install client-lint client-preview \
@@ -16,6 +16,7 @@ help:
 	@echo "  make docker-down      Stop all containers"
 	@echo "  make docker-build     Build and start containers"
 	@echo "  make docker-rebuild   Rebuild images (no cache) and start"
+	@echo "  make docker-rebuild-api  Rebuild and start only the API (faster for backend-only changes)"
 	@echo "  make docker-restart   Restart all containers"
 	@echo "  make docker-logs      Follow all logs"
 	@echo "  make docker-logs-api  make docker-logs-client  (per-service)"
@@ -55,6 +56,11 @@ docker-build:
 docker-rebuild:
 	docker compose -f $(COMPOSE_FILE) build --no-cache
 	docker compose -f $(COMPOSE_FILE) up -d
+
+# Rebuild and restart only the API (faster when you only changed backend)
+docker-rebuild-api:
+	docker compose -f $(COMPOSE_FILE) build --no-cache api
+	docker compose -f $(COMPOSE_FILE) up -d api
 
 docker-restart:
 	docker compose -f $(COMPOSE_FILE) restart

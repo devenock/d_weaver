@@ -184,5 +184,22 @@ func Load() (*Config, error) {
 	if s := os.Getenv("JWT_PUBLIC_KEY_PATH"); s != "" {
 		c.JWT.PublicKeyPath = s
 	}
+	// Upload: apply env overrides and ensure max_bytes is never 0 (Viper may leave nested at zero)
+	const defaultUploadMaxBytes = 10 * 1024 * 1024 // 10MB per PDF
+	if s := os.Getenv("UPLOAD_MAX_BYTES"); s != "" {
+		var n int
+		if _, err := fmt.Sscanf(s, "%d", &n); err == nil && n > 0 {
+			c.Upload.MaxBytes = n
+		}
+	}
+	if s := os.Getenv("UPLOAD_DIR"); s != "" {
+		c.Upload.Dir = s
+	}
+	if c.Upload.MaxBytes <= 0 {
+		c.Upload.MaxBytes = defaultUploadMaxBytes
+	}
+	if c.Upload.Dir == "" {
+		c.Upload.Dir = "uploads"
+	}
 	return &c, nil
 }
