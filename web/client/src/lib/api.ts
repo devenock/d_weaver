@@ -11,6 +11,18 @@ export function getApiBaseUrl(): string {
   return origin;
 }
 
+/**
+ * Resolve diagram image_url for browser requests. If url is a path (e.g. /uploads/...),
+ * prepend the API origin so the request goes to the backend.
+ */
+export function resolveImageUrl(imageUrl: string | null | undefined): string | null {
+  if (!imageUrl) return null;
+  if (imageUrl.startsWith("http://") || imageUrl.startsWith("https://")) return imageUrl;
+  const base = getApiBaseUrl();
+  if (!base) return imageUrl;
+  return base.replace(/\/+$/, "") + (imageUrl.startsWith("/") ? imageUrl : "/" + imageUrl);
+}
+
 export interface ApiErrorBody {
   code: string;
   message: string;

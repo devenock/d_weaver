@@ -1,111 +1,61 @@
 import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
-import { toast } from "sonner";
-import type { Database } from "@/integrations/supabase/types";
+import { useAuth } from "@/contexts/AuthContext";
+import { useToast } from "@/hooks/use-toast";
+import * as workspaceApi from "@/lib/workspace-api";
+import type { WorkspaceWithRoleResponse } from "@/lib/api-types";
+import { ApiError } from "@/lib/api";
 
-type Workspace = Database["public"]["Tables"]["workspaces"]["Row"];
-// Removed unused _WorkspaceMember type
-type WorkspaceRole = Database["public"]["Enums"]["workspace_role"];
-
-export interface WorkspaceWithRole extends Workspace {
-  role: WorkspaceRole;
-  memberCount?: number;
-}
+export type WorkspaceWithRole = WorkspaceWithRoleResponse;
 
 export const useWorkspaces = () => {
+  const { getAccessToken } = useAuth();
+  const { toast } = useToast();
   const [workspaces, setWorkspaces] = useState<WorkspaceWithRole[]>([]);
   const [currentWorkspace, setCurrentWorkspace] =
     useState<WorkspaceWithRole | null>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadWorkspaces();
-
-    // Subscribe to workspace changes
-    const channel = supabase
-      .channel("workspace-changes")
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "workspaces" },
-        () => loadWorkspaces(),
-      )
-      .on(
-        "postgres_changes",
-        { event: "*", schema: "public", table: "workspace_members" },
-        () => loadWorkspaces(),
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, []);
-
   const loadWorkspaces = async () => {
+    const token = getAccessToken();
+    if (!token) {
+      setWorkspaces([]);
+      setCurrentWorkspace(null);
+      setLoading(false);
+      return;
+    }
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) {
-        setWorkspaces([]);
-        setLoading(false);
-        return;
-      }
+      const list = await workspaceApi.listWorkspaces(token);
+      setWorkspaces(list);
 
-      // Get all workspaces the user is a member of
-      const { data: memberships, error: memberError } = await supabase
-        .from("workspace_members")
-        .select("workspace_id, role")
-        .eq("user_id", user.id);
-
-      if (memberError) throw memberError;
-
-      if (!memberships || memberships.length === 0) {
-        setWorkspaces([]);
-        setLoading(false);
-        return;
-      }
-
-      const workspaceIds = memberships.map((m) => m.workspace_id);
-
-      const { data: workspacesData, error: workspacesError } = await supabase
-        .from("workspaces")
-        .select("*")
-        .in("id", workspaceIds);
-
-      if (workspacesError) throw workspacesError;
-
-      // Combine workspace data with roles
-      const workspacesWithRoles: WorkspaceWithRole[] = (
-        workspacesData || []
-      ).map((w) => ({
-        ...w,
-        role:
-          (memberships.find((m) => m.workspace_id === w.id)
-            ?.role as WorkspaceRole) || "member",
-      }));
-
-      setWorkspaces(workspacesWithRoles);
-
-      // Restore last selected workspace from localStorage or select first
       const savedWorkspaceId = localStorage.getItem("currentWorkspaceId");
-      if (
-        savedWorkspaceId &&
-        workspacesWithRoles.find((w) => w.id === savedWorkspaceId)
-      ) {
-        setCurrentWorkspace(
-          workspacesWithRoles.find((w) => w.id === savedWorkspaceId) || null,
-        );
-      } else if (workspacesWithRoles.length > 0 && !currentWorkspace) {
-        setCurrentWorkspace(workspacesWithRoles[0]);
-      }
-    } catch (error) {
-      console.error("Error loading workspaces:", error);
-      toast.error("Failed to load workspaces");
+      setCurrentWorkspace((prev) => {
+        if (
+          savedWorkspaceId &&
+          list.some((w) => w.id === savedWorkspaceId)
+        ) {
+          return list.find((w) => w.id === savedWorkspaceId) ?? null;
+        }
+        if (
+          list.length > 0 &&
+          (!prev || !list.some((w) => w.id === prev.id))
+        ) {
+          return list[0];
+        }
+        return prev;
+      });
+    } catch (err) {
+      console.error("Error loading workspaces:", err);
+      const message = err instanceof ApiError ? err.body.message : "Failed to load workspaces";
+      toast({ title: "Error", description: message, variant: "destructive" });
+      setWorkspaces([]);
     } finally {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    loadWorkspaces();
+  }, [getAccessToken]);
 
   const selectWorkspace = (workspace: WorkspaceWithRole) => {
     setCurrentWorkspace(workspace);
@@ -113,44 +63,22 @@ export const useWorkspaces = () => {
   };
 
   const createWorkspace = async (name: string, description?: string) => {
+    const token = getAccessToken();
+    if (!token) throw new Error("Not authenticated");
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      // Use the security definer function to create workspace atomically
-      const { data: workspaceId, error: createError } = await supabase.rpc(
-        "create_workspace",
-        {
-          _name: name,
-          _description: description || undefined,
-        },
-      );
-
-      if (createError) throw createError;
-
-      // Fetch the full workspace data
-      const { data: workspace, error: fetchError } = await supabase
-        .from("workspaces")
-        .select("*")
-        .eq("id", workspaceId)
-        .single();
-
-      if (fetchError) throw fetchError;
-
-      toast.success("Workspace created successfully!");
+      const created = await workspaceApi.createWorkspace(token, {
+        name,
+        description: description ?? "",
+      });
+      toast({ title: "Success", description: "Workspace created successfully!" });
       await loadWorkspaces();
-
-      // Select the new workspace
-      const newWorkspace = { ...workspace, role: "owner" as WorkspaceRole };
-      selectWorkspace(newWorkspace);
-
-      return workspace;
-    } catch (error) {
-      console.error("Error creating workspace:", error);
-      toast.error("Failed to create workspace");
-      throw error;
+      const withRole: WorkspaceWithRole = { ...created, role: "owner" };
+      selectWorkspace(withRole);
+      return withRole;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.body.message : "Failed to create workspace";
+      toast({ title: "Error", description: message, variant: "destructive" });
+      throw err;
     }
   };
 
@@ -163,45 +91,40 @@ export const useWorkspaces = () => {
       tags?: string[];
     },
   ) => {
+    const token = getAccessToken();
+    if (!token) throw new Error("Not authenticated");
     try {
-      const { error } = await supabase
-        .from("workspaces")
-        .update(updates)
-        .eq("id", workspaceId);
-
-      if (error) throw error;
-
-      toast.success("Workspace updated successfully!");
+      await workspaceApi.updateWorkspace(token, workspaceId, {
+        name: updates.name ?? "",
+        description: updates.description ?? "",
+        color: updates.color ?? "",
+        tags: updates.tags,
+      });
+      toast({ title: "Success", description: "Workspace updated successfully!" });
       await loadWorkspaces();
-    } catch (error) {
-      console.error("Error updating workspace:", error);
-      toast.error("Failed to update workspace");
-      throw error;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.body.message : "Failed to update workspace";
+      toast({ title: "Error", description: message, variant: "destructive" });
+      throw err;
     }
   };
 
   const deleteWorkspace = async (workspaceId: string) => {
+    const token = getAccessToken();
+    if (!token) throw new Error("Not authenticated");
     try {
-      const { error } = await supabase
-        .from("workspaces")
-        .delete()
-        .eq("id", workspaceId);
-
-      if (error) throw error;
-
-      toast.success("Workspace deleted successfully!");
+      await workspaceApi.deleteWorkspace(token, workspaceId);
+      toast({ title: "Success", description: "Workspace deleted successfully!" });
       await loadWorkspaces();
-
-      // If we deleted the current workspace, select another
       if (currentWorkspace?.id === workspaceId) {
         setCurrentWorkspace(
-          workspaces.find((w) => w.id !== workspaceId) || null,
+          workspaces.find((w) => w.id !== workspaceId) ?? null,
         );
       }
-    } catch (error) {
-      console.error("Error deleting workspace:", error);
-      toast.error("Failed to delete workspace");
-      throw error;
+    } catch (err) {
+      const message = err instanceof ApiError ? err.body.message : "Failed to delete workspace";
+      toast({ title: "Error", description: message, variant: "destructive" });
+      throw err;
     }
   };
 

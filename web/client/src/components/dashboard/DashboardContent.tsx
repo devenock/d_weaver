@@ -2,26 +2,28 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Button } from "@/components/ui/button";
 import { Plus, Download, Share2, Trash2, Eye, Edit, MoreHorizontal } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { supabase } from "@/integrations/supabase/client";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
-import type { Tables } from "@/integrations/supabase/types";
-
-type Diagram = Tables<"diagrams">;
+import type { DiagramResponse } from "@/lib/api-types";
+import { deleteDiagram, updateDiagram } from "@/lib/diagram-api";
+import { resolveImageUrl } from "@/lib/api";
+import { ApiError } from "@/lib/api";
 
 interface DashboardContentProps {
-  diagrams: Diagram[];
+  accessToken: string;
+  diagrams: DiagramResponse[];
   loading: boolean;
-  onDiagramClick: (diagram: Diagram) => void;
+  onDiagramClick: (diagram: DiagramResponse) => void;
   onNewDiagram: () => void;
   onRefresh: () => void;
 }
 
 export function DashboardContent({
+  accessToken,
   diagrams,
   loading,
   onDiagramClick,
@@ -33,47 +35,46 @@ export function DashboardContent({
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const { error } = await supabase.from("diagrams").delete().eq("id", id);
-      if (error) throw error;
+      await deleteDiagram(accessToken, id);
       toast({ title: "Success", description: "Diagram deleted successfully" });
       onRefresh();
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.body.message : "Failed to delete diagram";
+      toast({ title: "Error", description: message, variant: "destructive" });
     }
   };
 
-  const handleShare = async (diagram: Diagram, e: React.MouseEvent) => {
+  const handleShare = async (diagram: DiagramResponse, e: React.MouseEvent) => {
     e.stopPropagation();
     try {
-      const { error } = await supabase
-        .from("diagrams")
-        .update({ is_public: true })
-        .eq("id", diagram.id);
-
-      if (error) throw error;
-
+      await updateDiagram(accessToken, diagram.id, {
+        title: diagram.title,
+        content: diagram.content,
+        diagram_type: diagram.diagram_type,
+        is_public: true,
+      });
       const shareUrl = `${window.location.origin}/diagram/${diagram.id}`;
       await navigator.clipboard.writeText(shareUrl);
-
       toast({
         title: "Share link copied!",
-        description: "The diagram is now public and the link has been copied."
+        description: "The diagram is now public and the link has been copied.",
       });
       onRefresh();
-    } catch (error: any) {
-      toast({ title: "Error", description: error.message, variant: "destructive" });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.body.message : "Failed to share diagram";
+      toast({ title: "Error", description: message, variant: "destructive" });
     }
   };
 
-  const handleDownload = async (diagram: Diagram, e: React.MouseEvent) => {
+  const handleDownload = async (diagram: DiagramResponse, e: React.MouseEvent) => {
     e.stopPropagation();
-    if (!diagram.image_url) {
+    const imageUrl = resolveImageUrl(diagram.image_url);
+    if (!imageUrl) {
       toast({ title: "Error", description: "No image available", variant: "destructive" });
       return;
     }
-
     try {
-      const response = await fetch(diagram.image_url);
+      const response = await fetch(imageUrl, { credentials: "include" });
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -84,8 +85,9 @@ export function DashboardContent({
       document.body.removeChild(a);
       URL.revokeObjectURL(url);
       toast({ title: "Success", description: "Diagram downloaded successfully" });
-    } catch (error: any) {
-      toast({ title: "Error", description: "Failed to download diagram", variant: "destructive" });
+    } catch (err) {
+      const message = err instanceof ApiError ? err.body.message : "Failed to download diagram";
+      toast({ title: "Error", description: message, variant: "destructive" });
     }
   };
 
@@ -122,8 +124,8 @@ export function DashboardContent({
       ) : (
         <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
           {diagrams.map((diagram) => (
-            <Card 
-              key={diagram.id} 
+            <Card
+              key={diagram.id}
               className="group cursor-pointer hover:shadow-lg transition-all duration-200 hover:border-primary/50"
               onClick={() => onDiagramClick(diagram)}
             >
@@ -137,9 +139,9 @@ export function DashboardContent({
                   </div>
                   <DropdownMenu>
                     <DropdownMenuTrigger asChild onClick={(e) => e.stopPropagation()}>
-                      <Button 
-                        variant="ghost" 
-                        size="icon" 
+                      <Button
+                        variant="ghost"
+                        size="icon"
                         className="h-8 w-8 opacity-0 group-hover:opacity-100 transition-opacity"
                       >
                         <MoreHorizontal className="h-4 w-4" />
@@ -167,7 +169,7 @@ export function DashboardContent({
                         <Share2 className="mr-2 h-4 w-4" />
                         Share
                       </DropdownMenuItem>
-                      <DropdownMenuItem 
+                      <DropdownMenuItem
                         onClick={(e) => handleDelete(diagram.id, e)}
                         className="text-destructive"
                       >
@@ -180,9 +182,9 @@ export function DashboardContent({
               </CardHeader>
               <CardContent className="p-4 pt-0">
                 <div className="bg-muted rounded-md h-32 overflow-hidden flex items-center justify-center">
-                  {diagram.image_url ? (
-                    <img 
-                      src={diagram.image_url} 
+                  {resolveImageUrl(diagram.image_url) ? (
+                    <img
+                      src={resolveImageUrl(diagram.image_url)!}
                       alt={diagram.title}
                       className="max-w-full max-h-full object-contain"
                     />
