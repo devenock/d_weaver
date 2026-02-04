@@ -39,6 +39,11 @@ services:
       context: ..
       dockerfile: Dockerfile
     container_name: dweaver-api
+    # Load Resend and other vars into the container. List .env first so .env.development overrides when both exist.
+    # Docker Compose ${VAR} substitution uses host .env only; env_file injects vars into the container.
+    env_file:
+      - ../.env
+      - ../.env.development
     environment:
       DB_URL: postgres://dweaver:dweaver_dev_password@postgres:5432/dweaver?sslmode=disable
       REDIS_URL: redis://redis:6379/0

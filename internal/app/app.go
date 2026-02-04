@@ -155,6 +155,13 @@ func New(cfg *config.Config, log pkglogger.Logger) (*App, error) {
 	} else {
 		workspaceSvc = workspacesvc.New(workspaceRepo)
 	}
+	if log != nil {
+		if cfg.PasswordReset.ResendAPIKey != "" && cfg.PasswordReset.FromEmail != "" {
+			log.Info().Str("from_email", cfg.PasswordReset.FromEmail).Msg("Resend email configured for password reset and invitations")
+		} else {
+			log.Info().Msg("Resend not configured: set RESEND_API_KEY and PASSWORD_RESET_FROM_EMAIL in .env or .env.development (and use env_file when running in Docker)")
+		}
+	}
 	workspaceHandler := workspacehandler.New(workspaceSvc, jwtIssuer, log)
 	workspaceHandler.Register(v1)
 

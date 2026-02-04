@@ -183,6 +183,10 @@ With these set, when a user submits "Forgot password" with their email, the API 
 
 **Workspace invitations** use the same Resend config and `PASSWORD_RESET_BASE_URL`. When an owner or admin invites someone by email (e.g. from the dashboard "Invite Team" button), the API sends an email with a "Join workspace" link to `{PASSWORD_RESET_BASE_URL}/join?token=...`. The invitee can sign up or log in, then accept the invitation and be redirected to the dashboard with that workspace selected.
 
+**When the API runs in Docker**, the container does not see your host `.env` or `.env.development` unless they are passed in. The Compose file loads repo-root `.env` and `.env.development` into the API container via `env_file`. Put your Resend credentials in **repo root** `.env.development` (or `.env`). After `make docker-up` or `make docker-rebuild`, check API logs: you should see either `Resend email configured for password reset and invitations` (with `from_email=...`) or `Resend not configured: set RESEND_API_KEY and PASSWORD_RESET_FROM_EMAIL...`. If you see "not configured", the container did not receive the vars—ensure `.env.development` (or `.env`) exists in the repo root and contains `RESEND_API_KEY` and `PASSWORD_RESET_FROM_EMAIL`, then restart the API container (e.g. `make docker-restart` or `docker compose -f deployments/docker-compose.yml up -d api`).
+
+**Resend sender format:** Use a verified domain in Resend. The `From` field can be `noreply@yourdomain.com` or `DiagramGen <noreply@yourdomain.com>`. For testing without a domain, use `onboarding@resend.dev` (sends only to your Resend account email).
+
 ### Testing the email flow locally (no deployment)
 
 To verify that Resend actually sends the reset email while developing locally:
