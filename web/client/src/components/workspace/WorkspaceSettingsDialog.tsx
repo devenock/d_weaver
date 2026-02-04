@@ -13,7 +13,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { useWorkspaces, type WorkspaceWithRole } from "@/hooks/useWorkspaces";
-import { useWorkspaceMembers } from "@/hooks/useWorkspaceMembers";
+import { useWorkspaceMembers, type WorkspaceRole } from "@/hooks/useWorkspaceMembers";
 import { Loader2, Trash2, UserPlus, X, Crown, Shield, User, Eye, Tag } from "lucide-react";
 import {
   AlertDialog,
@@ -35,9 +35,6 @@ import {
 } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 import { cn } from "@/lib/utils";
-import type { Database } from "@/integrations/supabase/types";
-
-type WorkspaceRole = Database['public']['Enums']['workspace_role'];
 
 const WORKSPACE_COLORS = [
   { name: "None", value: "" },

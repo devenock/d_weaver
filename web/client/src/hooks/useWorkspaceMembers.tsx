@@ -1,97 +1,61 @@
-import { useEffect, useState } from "react";
-import { supabase } from "@/integrations/supabase/client";
+import { useEffect, useState, useCallback } from "react";
 import { toast } from "sonner";
-import type { Database } from "@/integrations/supabase/types";
+import { useAuth } from "@/contexts/AuthContext";
+import * as workspaceApi from "@/lib/workspace-api";
+import type { MemberResponse, InvitationResponse } from "@/lib/api-types";
+import { getApiErrorMessage } from "@/lib/api";
 
-type WorkspaceMember = Database["public"]["Tables"]["workspace_members"]["Row"];
-type WorkspaceInvitation =
-  Database["public"]["Tables"]["workspace_invitations"]["Row"];
-type WorkspaceRole = Database["public"]["Enums"]["workspace_role"];
+export type WorkspaceRole = "owner" | "admin" | "member" | "viewer";
 
-interface MemberWithEmail extends WorkspaceMember {
+interface MemberWithEmail extends MemberResponse {
   email?: string;
 }
 
+/** Invitations: Go API has no list endpoint yet; kept as empty for now. */
+const NO_INVITATIONS: InvitationResponse[] = [];
+
 export const useWorkspaceMembers = (workspaceId: string | null) => {
+  const { getAccessToken } = useAuth();
   const [members, setMembers] = useState<MemberWithEmail[]>([]);
-  const [invitations, setInvitations] = useState<WorkspaceInvitation[]>([]);
+  const [invitations, setInvitations] = useState<InvitationResponse[]>(NO_INVITATIONS);
   const [loading, setLoading] = useState(true);
+
+  const loadMembers = useCallback(async () => {
+    if (!workspaceId) {
+      setMembers([]);
+      setLoading(false);
+      return;
+    }
+    const token = getAccessToken();
+    if (!token) {
+      setMembers([]);
+      setLoading(false);
+      return;
+    }
+    try {
+      const list = await workspaceApi.listMembers(token, workspaceId);
+      setMembers(list as MemberWithEmail[]);
+    } catch (err) {
+      console.error("Error loading members:", err);
+      toast.error(getApiErrorMessage(err, "Failed to load members"));
+      setMembers([]);
+    } finally {
+      setLoading(false);
+    }
+  }, [workspaceId, getAccessToken]);
 
   useEffect(() => {
     if (!workspaceId) {
       setMembers([]);
-      setInvitations([]);
+      setInvitations(NO_INVITATIONS);
       setLoading(false);
       return;
     }
-
+    setLoading(true);
     loadMembers();
-    loadInvitations();
-
-    // Subscribe to member changes
-    const channel = supabase
-      .channel(`workspace-members-${workspaceId}`)
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "workspace_members",
-          filter: `workspace_id=eq.${workspaceId}`,
-        },
-        () => loadMembers(),
-      )
-      .on(
-        "postgres_changes",
-        {
-          event: "*",
-          schema: "public",
-          table: "workspace_invitations",
-          filter: `workspace_id=eq.${workspaceId}`,
-        },
-        () => loadInvitations(),
-      )
-      .subscribe();
-
-    return () => {
-      supabase.removeChannel(channel);
-    };
-  }, [workspaceId]);
-
-  const loadMembers = async () => {
-    if (!workspaceId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from("workspace_members")
-        .select("*")
-        .eq("workspace_id", workspaceId);
-
-      if (error) throw error;
-      setMembers(data || []);
-    } catch (error) {
-      console.error("Error loading members:", error);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const loadInvitations = async () => {
-    if (!workspaceId) return;
-
-    try {
-      const { data, error } = await supabase
-        .from("workspace_invitations")
-        .select("*")
-        .eq("workspace_id", workspaceId)
-        .gt("expires_at", new Date().toISOString());
-
-      if (error) throw error;
-      setInvitations(data || []);
-    } catch (error) {
-      console.error("Error loading invitations:", error);
-    }
-  };
+    // No list invitations API yet; leave invitations empty
+    setInvitations(NO_INVITATIONS);
+  }, [workspaceId, loadMembers]);
 
   const inviteMember = async (
     email: string,
@@ -99,120 +63,60 @@ export const useWorkspaceMembers = (workspaceId: string | null) => {
     workspaceName?: string,
   ) => {
     if (!workspaceId) return;
-
+    const token = getAccessToken();
+    if (!token) {
+      toast.error("Not authenticated");
+      return;
+    }
     try {
-      const {
-        data: { user },
-      } = await supabase.auth.getUser();
-      if (!user) throw new Error("Not authenticated");
-
-      // Create the invitation
-      const { data: invitation, error } = await supabase
-        .from("workspace_invitations")
-        .insert({
-          workspace_id: workspaceId,
-          email: email.toLowerCase(),
-          role,
-          invited_by: user.id,
-        })
-        .select()
-        .single();
-
-      if (error) {
-        if (error.code === "23505") {
-          toast.error("This email has already been invited");
-          return;
-        }
-        throw error;
-      }
-
-      // Send email notification
-      try {
-        const { error: emailError } = await supabase.functions.invoke(
-          "send-workspace-invitation",
-          {
-            body: {
-              email: email.toLowerCase(),
-              workspaceName: workspaceName || "a workspace",
-              inviterName: user.email || "A team member",
-              token: invitation.token,
-              role,
-            },
-          },
-        );
-
-        if (emailError) {
-          console.error("Failed to send invitation email:", emailError);
-          toast.warning("Invitation created but email notification failed");
-        } else {
-          toast.success(`Invitation sent to ${email}`);
-        }
-      } catch (emailErr) {
-        console.error("Email service error:", emailErr);
-        toast.success(
-          `Invitation created for ${email} (email notification may have failed)`,
-        );
-      }
-
-      await loadInvitations();
-    } catch (error) {
-      console.error("Error inviting member:", error);
-      toast.error("Failed to send invitation");
-      throw error;
+      await workspaceApi.inviteMember(token, workspaceId, {
+        email: email.toLowerCase(),
+        role,
+      });
+      toast.success(`Invitation sent to ${email}`);
+      await loadMembers();
+      setInvitations(NO_INVITATIONS);
+    } catch (err) {
+      const msg = getApiErrorMessage(err, "Failed to send invitation");
+      toast.error(msg);
+      throw err;
     }
   };
 
-  const cancelInvitation = async (invitationId: string) => {
-    try {
-      const { error } = await supabase
-        .from("workspace_invitations")
-        .delete()
-        .eq("id", invitationId);
-
-      if (error) throw error;
-
-      toast.success("Invitation cancelled");
-      await loadInvitations();
-    } catch (error) {
-      console.error("Error cancelling invitation:", error);
-      toast.error("Failed to cancel invitation");
-      throw error;
-    }
+  const cancelInvitation = async (_invitationId: string) => {
+    // No DELETE invitation endpoint in Go API yet
+    toast.info("Cancel invitation is not available yet");
   };
 
   const updateMemberRole = async (memberId: string, newRole: WorkspaceRole) => {
+    if (!workspaceId) return;
+    const member = members.find((m) => m.id === memberId);
+    if (!member) return;
+    const token = getAccessToken();
+    if (!token) return;
     try {
-      const { error } = await supabase
-        .from("workspace_members")
-        .update({ role: newRole })
-        .eq("id", memberId);
-
-      if (error) throw error;
-
+      await workspaceApi.updateMemberRole(token, workspaceId, member.user_id, newRole);
       toast.success("Member role updated");
       await loadMembers();
-    } catch (error) {
-      console.error("Error updating member role:", error);
-      toast.error("Failed to update member role");
-      throw error;
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Failed to update role"));
+      throw err;
     }
   };
 
   const removeMember = async (memberId: string) => {
+    if (!workspaceId) return;
+    const member = members.find((m) => m.id === memberId);
+    if (!member) return;
+    const token = getAccessToken();
+    if (!token) return;
     try {
-      const { error } = await supabase
-        .from("workspace_members")
-        .delete()
-        .eq("id", memberId);
-
-      if (error) throw error;
-
+      await workspaceApi.removeMember(token, workspaceId, member.user_id);
       toast.success("Member removed from workspace");
       await loadMembers();
-    } catch (error) {
-      console.error("Error removing member:", error);
-      toast.error("Failed to remove member");
-      throw error;
+    } catch (err) {
+      toast.error(getApiErrorMessage(err, "Failed to remove member"));
+      throw err;
     }
   };
 

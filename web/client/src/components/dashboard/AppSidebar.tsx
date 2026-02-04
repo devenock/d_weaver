@@ -344,6 +344,7 @@ export function AppSidebar({
       <CreateWorkspaceDialog
         open={createWorkspaceOpen}
         onOpenChange={setCreateWorkspaceOpen}
+        onCreateWorkspace={_onCreateWorkspace}
       />
 
       {currentWorkspace && (
