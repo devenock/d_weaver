@@ -98,6 +98,24 @@ All other routes below require `Authorization: Bearer <access_token>`.
 
 Optional: `config.yaml` or `config/config.yaml` (viper); env overrides file.
 
+### Production JWT (RS256)
+
+For production, use **RS256** instead of the default HS256 dev secret. Set:
+
+- `JWT_PRIVATE_KEY_PATH` — path to the RSA private key PEM file (used to sign access tokens).
+- `JWT_PUBLIC_KEY_PATH` — path to the RSA public key PEM file (used to validate tokens in auth middleware).
+
+When both are set, the API uses RS256 and ignores `JWT_REFRESH_TOKEN_SECRET` for **signing** (the secret is still used for refresh token generation). Generate a key pair (e.g. 2048-bit) and point the env vars at the files:
+
+```bash
+# Generate private key
+openssl genrsa -out jwt_private.pem 2048
+# Extract public key
+openssl rsa -in jwt_private.pem -pubout -out jwt_public.pem
+```
+
+Then set `JWT_PRIVATE_KEY_PATH=jwt_private.pem` and `JWT_PUBLIC_KEY_PATH=jwt_public.pem` (or absolute paths). Keep the private key file readable only by the process and out of version control.
+
 ---
 
 ## Running the API
@@ -162,6 +180,26 @@ Forgot-password can send the reset link by email using [Resend](https://resend.c
    - `PASSWORD_RESET_BASE_URL` — base URL of your app so the link is correct (e.g. `https://app.yourdomain.com` or `http://localhost:3000`).
 
 With these set, when a user submits "Forgot password" with their email, the API will send them an email containing the reset link. If you do not set `RESEND_API_KEY` and `PASSWORD_RESET_FROM_EMAIL`, you can still use dev mode: set `PASSWORD_RESET_RETURN_LINK_IN_RESPONSE=true` and `PASSWORD_RESET_BASE_URL` so the API returns the link in the response and the frontend can display it.
+
+### Testing the email flow locally (no deployment)
+
+To verify that Resend actually sends the reset email while developing locally:
+
+1. **Create a `.env`** in the repo root (copy from `.env.example`). Set:
+   - `RESEND_API_KEY` — your Resend API key.
+   - `PASSWORD_RESET_FROM_EMAIL` — for testing use `onboarding@resend.dev` (Resend delivers only to the email that owns your Resend account) or a verified domain address.
+   - `PASSWORD_RESET_BASE_URL=http://localhost:3000` (or the port your frontend uses) so the link in the email points to your local app.
+   - Do **not** set `PASSWORD_RESET_RETURN_LINK_IN_RESPONSE=true` (or set it to `false`); otherwise the API returns the link in the response and does not send email. If you run the API in Docker, override the default in `deployments/docker-compose.yml` (e.g. set `PASSWORD_RESET_RETURN_LINK_IN_RESPONSE: "false"` for the api service) so the API sends email.
+
+2. **Start the stack**: Postgres + API + frontend (e.g. `make docker-up` or run API with `go run ./cmd/api` and frontend with `make client-dev`). Ensure the API loads `.env` (when running `go run ./cmd/api` from repo root, `godotenv` loads it).
+
+3. **Create a user** whose email is one you can receive mail at (e.g. the same email as your Resend account when using `onboarding@resend.dev`): sign up via the app or `POST /api/v1/auth/register`.
+
+4. **Trigger forgot-password**: open the app at http://localhost:3000, go to Login → “Forgot password?”, enter that user’s email, submit.
+
+5. **Check delivery**: open the inbox for that address. You should see “Reset your password” with a link like `http://localhost:3000/reset-password?token=...`. Click it and set a new password to confirm the full flow.
+
+6. **If something fails**: check API logs for `password reset email send failed` (and the underlying error). You can also check the [Resend dashboard](https://resend.com/emails) for send status and errors.
 
 ## Before / during testing
 
