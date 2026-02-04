@@ -148,7 +148,7 @@ func New(cfg *config.Config, log pkglogger.Logger) (*App, error) {
 
 	diagramRepo := diagramrepo.New(pool)
 	diagramSvc := diagramsvc.New(diagramRepo, workspaceRepo)
-	diagramHandler := diagramhandler.New(diagramSvc, jwtIssuer, cfg.Upload)
+	diagramHandler := diagramhandler.New(diagramSvc, jwtIssuer, cfg.Upload, log)
 	diagramHandler.Register(v1)
 
 	aiGen := client.NewHTTPGenerator(cfg.AI.APIKey, cfg.AI.BaseURL, cfg.AI.Model)

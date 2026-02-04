@@ -201,6 +201,10 @@ To verify that Resend actually sends the reset email while developing locally:
 
 6. **If something fails**: check API logs for `password reset email send failed` (and the underlying error). You can also check the [Resend dashboard](https://resend.com/emails) for send status and errors.
 
+## Troubleshooting
+
+- **GET /api/v1/diagrams returns 500** — Usually the database is missing the `diagrams` table. The API runs migrations on startup; if the DB was created before all migrations existed, ensure the API has restarted so it can run any new migrations. You can also run migrations manually: set `DB_URL` (e.g. `postgres://dweaver:dweaver_dev_password@localhost:5432/dweaver?sslmode=disable`) and run `make migrate` (requires the [migrate](https://github.com/golang-migrate/migrate) CLI). Check API logs for the real error: on list diagrams failure the server logs the underlying cause (e.g. `relation "diagrams" does not exist`).
+
 ## Before / during testing
 
 1. **AI key** — Set `AI_API_KEY` for `POST /api/v1/ai/generate-diagram`. You will add this yourself.
