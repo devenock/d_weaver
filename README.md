@@ -98,6 +98,24 @@ All other routes below require `Authorization: Bearer <access_token>`.
 
 Optional: `config.yaml` or `config/config.yaml` (viper); env overrides file.
 
+### Production JWT (RS256)
+
+For production, use **RS256** instead of the default HS256 dev secret. Set:
+
+- `JWT_PRIVATE_KEY_PATH` — path to the RSA private key PEM file (used to sign access tokens).
+- `JWT_PUBLIC_KEY_PATH` — path to the RSA public key PEM file (used to validate tokens in auth middleware).
+
+When both are set, the API uses RS256 and ignores `JWT_REFRESH_TOKEN_SECRET` for **signing** (the secret is still used for refresh token generation). Generate a key pair (e.g. 2048-bit) and point the env vars at the files:
+
+```bash
+# Generate private key
+openssl genrsa -out jwt_private.pem 2048
+# Extract public key
+openssl rsa -in jwt_private.pem -pubout -out jwt_public.pem
+```
+
+Then set `JWT_PRIVATE_KEY_PATH=jwt_private.pem` and `JWT_PUBLIC_KEY_PATH=jwt_public.pem` (or absolute paths). Keep the private key file readable only by the process and out of version control.
+
 ---
 
 ## Running the API

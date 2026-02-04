@@ -177,5 +177,11 @@ func Load() (*Config, error) {
 	if s := os.Getenv("PASSWORD_RESET_FROM_EMAIL"); s != "" {
 		c.PasswordReset.FromEmail = s
 	}
+	if s := os.Getenv("JWT_PRIVATE_KEY_PATH"); s != "" {
+		c.JWT.PrivateKeyPath = s
+	}
+	if s := os.Getenv("JWT_PUBLIC_KEY_PATH"); s != "" {
+		c.JWT.PublicKeyPath = s
+	}
 	return &c, nil
 }
