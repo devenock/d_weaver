@@ -3,6 +3,8 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import * as workspaceApi from "@/lib/workspace-api";
 import type { MemberResponse, InvitationResponse } from "@/lib/api-types";
+
+export type InviteResult = InvitationResponse;
 import { getApiErrorMessage } from "@/lib/api";
 
 export type WorkspaceRole = "owner" | "admin" | "member" | "viewer";
@@ -61,21 +63,22 @@ export const useWorkspaceMembers = (workspaceId: string | null) => {
     email: string,
     role: WorkspaceRole = "member",
     workspaceName?: string,
-  ) => {
-    if (!workspaceId) return;
+  ): Promise<InvitationResponse | undefined> => {
+    if (!workspaceId) return undefined;
     const token = getAccessToken();
     if (!token) {
       toast.error("Not authenticated");
-      return;
+      return undefined;
     }
     try {
-      await workspaceApi.inviteMember(token, workspaceId, {
+      const invitation = await workspaceApi.inviteMember(token, workspaceId, {
         email: email.toLowerCase(),
         role,
       });
       toast.success(`Invitation sent to ${email}`);
       await loadMembers();
       setInvitations(NO_INVITATIONS);
+      return invitation;
     } catch (err) {
       const msg = getApiErrorMessage(err, "Failed to send invitation");
       toast.error(msg);

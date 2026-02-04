@@ -231,10 +231,13 @@ func (s *Service) ForgotPassword(ctx context.Context, email string) (*ForgotPass
 		resetLink = s.passwordResetBaseURL + "/reset-password?token=" + plain
 	}
 	if s.passwordResetSender != nil && resetLink != "" {
+		// Send email when sender is configured
 		if err := s.passwordResetSender.SendPasswordReset(u.Email, resetLink); err != nil && s.log != nil {
 			s.log.Error().Err(err).Str("user_id", u.ID.String()).Msg("password reset email send failed")
 		}
 	}
+	// Return link in response only if explicitly enabled (dev mode when email is not configured)
+	// When Resend is configured, set PASSWORD_RESET_RETURN_LINK_IN_RESPONSE=false to send email only
 	var result *ForgotPasswordResult
 	if s.passwordResetReturnLink && resetLink != "" {
 		result = &ForgotPasswordResult{ResetLink: resetLink}

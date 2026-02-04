@@ -148,7 +148,7 @@ func New(cfg *config.Config, log pkglogger.Logger) (*App, error) {
 		invitationSender := authemail.NewResendSender(cfg.PasswordReset.ResendAPIKey, cfg.PasswordReset.FromEmail)
 		invitationBaseURL := strings.TrimSuffix(cfg.PasswordReset.BaseURL, "/")
 		if invitationBaseURL != "" {
-			workspaceSvc = workspacesvc.NewWithInvitationEmail(workspaceRepo, invitationSender, invitationBaseURL)
+			workspaceSvc = workspacesvc.NewWithInvitationEmail(workspaceRepo, invitationSender, invitationBaseURL, log)
 		} else {
 			workspaceSvc = workspacesvc.New(workspaceRepo)
 		}

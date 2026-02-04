@@ -48,8 +48,8 @@ services:
       CORS_ALLOWED_ORIGINS: '["http://localhost:5173","http://localhost:3000"]'
       # Password reset: base URL for reset links; set to your frontend URL in production
       PASSWORD_RESET_BASE_URL: http://localhost:3000
-      # Set to "true" to return reset link in API response (dev, no email). Leave unset when using Resend.
-      PASSWORD_RESET_RETURN_LINK_IN_RESPONSE: "true"
+      # Set to "true" to return reset link in API response (dev, no email). Set to "false" or leave unset when using Resend.
+      PASSWORD_RESET_RETURN_LINK_IN_RESPONSE: "false"
       # Resend: set via .env (copy .env.example to .env and add RESEND_API_KEY, PASSWORD_RESET_FROM_EMAIL)
       RESEND_API_KEY: ${RESEND_API_KEY:-}
       PASSWORD_RESET_FROM_EMAIL: ${PASSWORD_RESET_FROM_EMAIL:-}

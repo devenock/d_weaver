@@ -191,7 +191,7 @@ To verify that Resend actually sends the reset email while developing locally:
    - `RESEND_API_KEY` — your Resend API key.
    - `PASSWORD_RESET_FROM_EMAIL` — for testing use `onboarding@resend.dev` (Resend delivers only to the email that owns your Resend account) or a verified domain address.
    - `PASSWORD_RESET_BASE_URL=http://localhost:3000` (or the port your frontend uses) so the link in the email points to your local app.
-   - Do **not** set `PASSWORD_RESET_RETURN_LINK_IN_RESPONSE=true` (or set it to `false`); otherwise the API returns the link in the response and does not send email. If you run the API in Docker, override the default in `deployments/docker-compose.yml` (e.g. set `PASSWORD_RESET_RETURN_LINK_IN_RESPONSE: "false"` for the api service) so the API sends email.
+   - Set `PASSWORD_RESET_RETURN_LINK_IN_RESPONSE=false` (or leave unset); otherwise the API returns the link in the response instead of sending email. The `deployments/docker-compose.yml` file has this set to `false` by default when using Resend. If you're running the API locally with `go run`, ensure this env var is `false` or unset in your `.env`.
 
 2. **Start the stack**: Postgres + API + frontend (e.g. `make docker-up` or run API with `go run ./cmd/api` and frontend with `make client-dev`). Ensure the API loads `.env` (when running `go run ./cmd/api` from repo root, `godotenv` loads it).
 

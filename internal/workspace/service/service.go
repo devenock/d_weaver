@@ -7,6 +7,7 @@ import (
 	"github.com/devenock/d_weaver/internal/common"
 	"github.com/devenock/d_weaver/internal/workspace/model"
 	"github.com/devenock/d_weaver/pkg/database"
+	"github.com/devenock/d_weaver/pkg/logger"
 	"github.com/google/uuid"
 )
 
@@ -38,6 +39,7 @@ type Service struct {
 	repo                Repository
 	invitationSender    InvitationEmailSender
 	invitationBaseURL   string
+	log                 logger.Logger // optional; when set, invitation email send failures are logged
 }
 
 // New returns a workspace service using the given repository.
@@ -46,9 +48,10 @@ func New(repo Repository) *Service {
 }
 
 // NewWithInvitationEmail returns a workspace service that sends invitation emails when inviting.
-func NewWithInvitationEmail(repo Repository, sender InvitationEmailSender, baseURL string) *Service {
+// log is optional; when set, invitation email send failures are logged (no PII).
+func NewWithInvitationEmail(repo Repository, sender InvitationEmailSender, baseURL string, log logger.Logger) *Service {
 	baseURL = strings.TrimSuffix(baseURL, "/")
-	return &Service{repo: repo, invitationSender: sender, invitationBaseURL: baseURL}
+	return &Service{repo: repo, invitationSender: sender, invitationBaseURL: baseURL, log: log}
 }
 
 // EnsureMember returns the member record or ErrForbidden if user is not a member.
@@ -208,7 +211,9 @@ func (s *Service) InviteMember(ctx context.Context, workspaceID, userID uuid.UUI
 		}
 		if sendErr := s.invitationSender.SendWorkspaceInvitation(inv.Email, workspaceName, inviterEmail, joinLink); sendErr != nil {
 			// Log but do not fail the request; invitation is already created
-			_ = sendErr
+			if s.log != nil {
+				s.log.Error().Err(sendErr).Str("workspace_id", workspaceID.String()).Str("invitation_email", inv.Email).Msg("invitation email send failed")
+			}
 		}
 	}
 	resp := model.InvitationResponse{
