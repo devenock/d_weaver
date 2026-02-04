@@ -18,6 +18,12 @@ type WorkspaceResponse struct {
 	UpdatedAt   time.Time  `json:"updated_at"`
 }
 
+// WorkspaceWithRoleResponse is WorkspaceResponse plus the current user's role (for list endpoint).
+type WorkspaceWithRoleResponse struct {
+	WorkspaceResponse
+	Role string `json:"role"`
+}
+
 // FromWorkspace builds a WorkspaceResponse from a Workspace.
 func FromWorkspace(w *Workspace) WorkspaceResponse {
 	if w == nil {
@@ -32,6 +38,14 @@ func FromWorkspace(w *Workspace) WorkspaceResponse {
 		CreatedBy:   w.CreatedBy,
 		CreatedAt:   w.CreatedAt,
 		UpdatedAt:   w.UpdatedAt,
+	}
+}
+
+// FromWorkspaceWithRole builds a WorkspaceWithRoleResponse from a Workspace and role.
+func FromWorkspaceWithRole(w *Workspace, role Role) WorkspaceWithRoleResponse {
+	return WorkspaceWithRoleResponse{
+		WorkspaceResponse: FromWorkspace(w),
+		Role:              string(role),
 	}
 }
 
