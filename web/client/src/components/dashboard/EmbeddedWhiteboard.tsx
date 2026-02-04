@@ -12,7 +12,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import type { ApiUser } from "@/lib/auth-api";
 import { getDiagram, createDiagram, updateDiagram, uploadDiagramImage } from "@/lib/diagram-api";
-import { ApiError } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api";
 import jsPDF from "jspdf";
 import { useWhiteboardHistory } from "@/hooks/useWhiteboardHistory";
 import { useWhiteboardCollaboration } from "@/hooks/useWhiteboardCollaboration";
@@ -274,8 +274,7 @@ export function EmbeddedWhiteboard({ diagramId, user, onClose: _onClose, onSave 
           fabricCanvas.renderAll();
         }
       } catch (err) {
-        const message = err instanceof ApiError ? err.body.message : "Failed to load whiteboard";
-        toast.error(message);
+        toast.error(getApiErrorMessage(err, "Failed to load whiteboard"));
       }
     };
 
@@ -477,8 +476,7 @@ export function EmbeddedWhiteboard({ diagramId, user, onClose: _onClose, onSave 
       toast.success("Whiteboard saved successfully!");
       onSave?.();
     } catch (err) {
-      const message = err instanceof ApiError ? err.body.message : "Failed to save whiteboard";
-      toast.error(message);
+      toast.error(getApiErrorMessage(err, "Failed to save whiteboard"));
     } finally {
       setSaving(false);
     }

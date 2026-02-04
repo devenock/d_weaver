@@ -11,7 +11,7 @@ import {
 import type { DiagramResponse } from "@/lib/api-types";
 import { deleteDiagram, updateDiagram } from "@/lib/diagram-api";
 import { resolveImageUrl } from "@/lib/api";
-import { ApiError } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api";
 
 interface DashboardContentProps {
   accessToken: string;
@@ -39,8 +39,7 @@ export function DashboardContent({
       toast({ title: "Success", description: "Diagram deleted successfully" });
       onRefresh();
     } catch (err) {
-      const message = err instanceof ApiError ? err.body.message : "Failed to delete diagram";
-      toast({ title: "Error", description: message, variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(err, "Failed to delete diagram"), variant: "destructive" });
     }
   };
 
@@ -61,8 +60,7 @@ export function DashboardContent({
       });
       onRefresh();
     } catch (err) {
-      const message = err instanceof ApiError ? err.body.message : "Failed to share diagram";
-      toast({ title: "Error", description: message, variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(err, "Failed to share diagram"), variant: "destructive" });
     }
   };
 
@@ -86,8 +84,7 @@ export function DashboardContent({
       URL.revokeObjectURL(url);
       toast({ title: "Success", description: "Diagram downloaded successfully" });
     } catch (err) {
-      const message = err instanceof ApiError ? err.body.message : "Failed to download diagram";
-      toast({ title: "Error", description: message, variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(err, "Failed to download diagram"), variant: "destructive" });
     }
   };
 

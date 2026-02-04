@@ -76,7 +76,7 @@ import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
 import type { ApiUser } from "@/lib/auth-api";
 import { getDiagram, createDiagram, updateDiagram, uploadDiagramImage, listComments, addComment } from "@/lib/diagram-api";
-import { ApiError } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api";
 import type { CommentResponse } from "@/lib/api-types";
 import { Canvas as FabricCanvas, Rect, Circle, Textbox, Polygon, Path, FabricObject, Group as FabricGroup, FabricImage, ActiveSelection } from "fabric";
 import { LayersPanel } from "./editor/LayersPanel";
@@ -498,8 +498,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           // If not JSON, it might be mermaid code
         }
       } catch (err) {
-        const message = err instanceof ApiError ? err.body.message : "Failed to load diagram";
-        toast.error(message);
+        toast.error(getApiErrorMessage(err, "Failed to load diagram"));
       }
     };
 
@@ -1554,8 +1553,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       setHasUnsavedChanges(false);
       onSave?.();
     } catch (err) {
-      const message = err instanceof ApiError ? err.body.message : "Failed to save diagram";
-      toast.error(message);
+      toast.error(getApiErrorMessage(err, "Failed to save diagram"));
     } finally {
       setSaving(false);
     }
@@ -2369,8 +2367,7 @@ function CommentInput({
       onCommentAdded();
       toast.success("Comment added");
     } catch (err) {
-      const message = err instanceof ApiError ? err.body.message : "Failed to add comment";
-      toast.error(message);
+      toast.error(getApiErrorMessage(err, "Failed to add comment"));
     } finally {
       setSubmitting(false);
     }

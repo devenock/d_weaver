@@ -3,7 +3,7 @@ import { useAuth } from "@/contexts/AuthContext";
 import { useToast } from "@/hooks/use-toast";
 import * as workspaceApi from "@/lib/workspace-api";
 import type { WorkspaceWithRoleResponse } from "@/lib/api-types";
-import { ApiError } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api";
 
 export type WorkspaceWithRole = WorkspaceWithRoleResponse;
 
@@ -45,7 +45,7 @@ export const useWorkspaces = () => {
       });
     } catch (err) {
       console.error("Error loading workspaces:", err);
-      const message = err instanceof ApiError ? err.body.message : "Failed to load workspaces";
+      const message = getApiErrorMessage(err, "Failed to load workspaces");
       toast({ title: "Error", description: message, variant: "destructive" });
       setWorkspaces([]);
     } finally {
@@ -76,7 +76,7 @@ export const useWorkspaces = () => {
       selectWorkspace(withRole);
       return withRole;
     } catch (err) {
-      const message = err instanceof ApiError ? err.body.message : "Failed to create workspace";
+      const message = getApiErrorMessage(err, "Failed to create workspace");
       toast({ title: "Error", description: message, variant: "destructive" });
       throw err;
     }
@@ -103,7 +103,7 @@ export const useWorkspaces = () => {
       toast({ title: "Success", description: "Workspace updated successfully!" });
       await loadWorkspaces();
     } catch (err) {
-      const message = err instanceof ApiError ? err.body.message : "Failed to update workspace";
+      const message = getApiErrorMessage(err, "Failed to update workspace");
       toast({ title: "Error", description: message, variant: "destructive" });
       throw err;
     }
@@ -122,7 +122,7 @@ export const useWorkspaces = () => {
         );
       }
     } catch (err) {
-      const message = err instanceof ApiError ? err.body.message : "Failed to delete workspace";
+      const message = getApiErrorMessage(err, "Failed to delete workspace");
       toast({ title: "Error", description: message, variant: "destructive" });
       throw err;
     }

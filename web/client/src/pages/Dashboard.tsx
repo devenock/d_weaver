@@ -11,7 +11,7 @@ import { useWorkspaces } from "@/hooks/useWorkspaces";
 import { listDiagrams } from "@/lib/diagram-api";
 import type { DiagramResponse } from "@/lib/api-types";
 import { useToast } from "@/hooks/use-toast";
-import { ApiError } from "@/lib/api";
+import { getApiErrorMessage } from "@/lib/api";
 
 type ViewMode = "dashboard" | "editor" | "whiteboard";
 
@@ -45,8 +45,7 @@ const Dashboard = () => {
       const list = await listDiagrams(token);
       setDiagrams(list);
     } catch (err) {
-      const message = err instanceof ApiError ? err.body.message : "Failed to load diagrams";
-      toast({ title: "Error", description: message, variant: "destructive" });
+      toast({ title: "Error", description: getApiErrorMessage(err, "Failed to load diagrams"), variant: "destructive" });
       setDiagrams([]);
     } finally {
       setLoading(false);

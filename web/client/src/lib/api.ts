@@ -12,8 +12,9 @@ export function getApiBaseUrl(): string {
 }
 
 /**
- * Resolve diagram image_url for browser requests. If url is a path (e.g. /uploads/...),
- * prepend the API origin so the request goes to the backend.
+ * Resolve diagram image_url for browser requests. Use this whenever you display
+ * or fetch a diagram's image_url (thumbnails, download, embed). If url is a path
+ * (e.g. /uploads/diagrams/...), prepends the API origin so the request hits the backend.
  */
 export function resolveImageUrl(imageUrl: string | null | undefined): string | null {
   if (!imageUrl) return null;
@@ -21,6 +22,16 @@ export function resolveImageUrl(imageUrl: string | null | undefined): string | n
   const base = getApiBaseUrl();
   if (!base) return imageUrl;
   return base.replace(/\/+$/, "") + (imageUrl.startsWith("/") ? imageUrl : "/" + imageUrl);
+}
+
+/**
+ * Return a user-facing error message from an unknown error. Use when showing
+ * toasts or UI after API or fetch failures. Prefers ApiError.body.message.
+ */
+export function getApiErrorMessage(err: unknown, fallback = "Something went wrong"): string {
+  if (err instanceof ApiError) return err.body.message;
+  if (err instanceof Error) return err.message;
+  return fallback;
 }
 
 export interface ApiErrorBody {

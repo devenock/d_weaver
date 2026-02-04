@@ -26,6 +26,7 @@ import {
 import { ExportEmbedDialog } from "@/components/ExportEmbedDialog";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
 import { CreateWorkspaceDialog } from "@/components/workspace/CreateWorkspaceDialog";
+import { resolveImageUrl, getApiErrorMessage } from "@/lib/api";
 import type { Tables } from "@/integrations/supabase/types";
 import { Badge } from "@/components/ui/badge";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
@@ -101,10 +102,10 @@ const Gallery = () => {
 
       if (error) throw error;
       setDiagrams(data || []);
-    } catch (error: any) {
+    } catch (err) {
       toast({
         title: "Error",
-        description: error.message,
+        description: getApiErrorMessage(err, "Failed to load diagrams"),
         variant: "destructive",
       });
     } finally {
@@ -124,10 +125,10 @@ const Gallery = () => {
       });
 
       loadDiagrams();
-    } catch (error: any) {
+    } catch (err) {
       toast({
         title: "Error",
-        description: error.message,
+        description: getApiErrorMessage(err, "Failed to delete diagram"),
         variant: "destructive",
       });
     }
@@ -152,17 +153,18 @@ const Gallery = () => {
       });
 
       loadDiagrams();
-    } catch (error: any) {
+    } catch (err) {
       toast({
         title: "Error",
-        description: error.message,
+        description: getApiErrorMessage(err, "Failed to share diagram"),
         variant: "destructive",
       });
     }
   };
 
   const handleDownload = async (diagram: Diagram) => {
-    if (!diagram.image_url) {
+    const imageUrl = resolveImageUrl(diagram.image_url);
+    if (!imageUrl) {
       toast({
         title: "Error",
         description: "No image available for this diagram",
@@ -172,7 +174,7 @@ const Gallery = () => {
     }
 
     try {
-      const response = await fetch(diagram.image_url);
+      const response = await fetch(imageUrl, { credentials: "include" });
       const blob = await response.blob();
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -187,17 +189,17 @@ const Gallery = () => {
         title: "Success",
         description: "Diagram downloaded successfully",
       });
-    } catch (error: any) {
+    } catch (err) {
       toast({
         title: "Error",
-        description: "Failed to download diagram",
+        description: getApiErrorMessage(err, "Failed to download diagram"),
         variant: "destructive",
       });
     }
   };
 
   const handleExportEmbed = (diagram: Diagram) => {
-    if (!diagram.image_url) {
+    if (!resolveImageUrl(diagram.image_url)) {
       toast({
         title: "Error",
         description: "No image available for this diagram",
@@ -289,7 +291,7 @@ const Gallery = () => {
         <ExportEmbedDialog
           open={exportDialogOpen}
           onOpenChange={setExportDialogOpen}
-          imageUrl={selectedDiagram.image_url || ""}
+          imageUrl={resolveImageUrl(selectedDiagram.image_url) || ""}
           title={selectedDiagram.title}
         />
       )}
@@ -332,9 +334,9 @@ const Gallery = () => {
             </CardHeader>
             <CardContent className="flex-1">
               <div className="bg-muted rounded-md mb-4 h-48 overflow-hidden flex items-center justify-center">
-                {diagram.image_url ? (
+                {resolveImageUrl(diagram.image_url) ? (
                   <img
-                    src={diagram.image_url}
+                    src={resolveImageUrl(diagram.image_url)!}
                     alt={diagram.title}
                     className="max-w-full max-h-full object-contain"
                   />
