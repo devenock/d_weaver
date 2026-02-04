@@ -61,3 +61,10 @@ func GetUserID(c *gin.Context) uuid.UUID {
 	id, _ := v.(uuid.UUID)
 	return id
 }
+
+// GetUserEmail returns the authenticated user's email from context. Call only after RequireAuth.
+func GetUserEmail(c *gin.Context) string {
+	v, _ := c.Get(string(UserEmailKey))
+	s, _ := v.(string)
+	return s
+}

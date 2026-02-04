@@ -154,7 +154,8 @@ func (h *Handler) invite(c *gin.Context) {
 	if req.Role != "" {
 		role = model.Role(req.Role)
 	}
-	resp, err := h.svc.InviteMember(c.Request.Context(), workspaceID, userID, req.Email, role)
+	inviterEmail := middleware.GetUserEmail(c)
+	resp, err := h.svc.InviteMember(c.Request.Context(), workspaceID, userID, req.Email, role, inviterEmail)
 	if err != nil {
 		common.WriteErrorFromDomain(c, err)
 		return
@@ -218,7 +219,8 @@ func (h *Handler) acceptInvitation(c *gin.Context) {
 		common.WriteError(c, http.StatusBadRequest, common.ErrorBody{Code: common.CodeInvalidInput, Message: "Invalid invitation token."})
 		return
 	}
-	resp, err := h.svc.AcceptInvitation(c.Request.Context(), userID, token)
+	userEmail := middleware.GetUserEmail(c)
+	resp, err := h.svc.AcceptInvitation(c.Request.Context(), userID, userEmail, token)
 	if err != nil {
 		common.WriteErrorFromDomain(c, err)
 		return

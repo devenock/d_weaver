@@ -2,12 +2,18 @@ package service
 
 import (
 	"context"
+	"strings"
 
 	"github.com/devenock/d_weaver/internal/common"
 	"github.com/devenock/d_weaver/internal/workspace/model"
 	"github.com/devenock/d_weaver/pkg/database"
 	"github.com/google/uuid"
 )
+
+// InvitationEmailSender sends workspace invitation emails (e.g. with join link). Optional.
+type InvitationEmailSender interface {
+	SendWorkspaceInvitation(toEmail, workspaceName, inviterEmail, joinLink string) error
+}
 
 // Repository is the workspace persistence interface.
 type Repository interface {
@@ -29,12 +35,20 @@ type Repository interface {
 
 // Service implements workspace business logic and RBAC (owner, admin, member, viewer).
 type Service struct {
-	repo Repository
+	repo                Repository
+	invitationSender    InvitationEmailSender
+	invitationBaseURL   string
 }
 
 // New returns a workspace service using the given repository.
 func New(repo Repository) *Service {
 	return &Service{repo: repo}
+}
+
+// NewWithInvitationEmail returns a workspace service that sends invitation emails when inviting.
+func NewWithInvitationEmail(repo Repository, sender InvitationEmailSender, baseURL string) *Service {
+	baseURL = strings.TrimSuffix(baseURL, "/")
+	return &Service{repo: repo, invitationSender: sender, invitationBaseURL: baseURL}
 }
 
 // EnsureMember returns the member record or ErrForbidden if user is not a member.
@@ -164,8 +178,8 @@ func (s *Service) ListMembers(ctx context.Context, workspaceID, userID uuid.UUID
 	return out, nil
 }
 
-// InviteMember creates an invitation; only admin or owner can invite.
-func (s *Service) InviteMember(ctx context.Context, workspaceID, userID uuid.UUID, email string, role model.Role) (*model.InvitationResponse, error) {
+// InviteMember creates an invitation; only admin or owner can invite. If invitationSender and invitationBaseURL are set, sends an email with a join link. inviterEmail is used in the email body (e.g. "X invited you").
+func (s *Service) InviteMember(ctx context.Context, workspaceID, userID uuid.UUID, email string, role model.Role, inviterEmail string) (*model.InvitationResponse, error) {
 	m, err := s.EnsureMember(ctx, workspaceID, userID)
 	if err != nil {
 		return nil, err
@@ -185,6 +199,17 @@ func (s *Service) InviteMember(ctx context.Context, workspaceID, userID uuid.UUI
 			return nil, common.NewDomainError(common.CodeConflict, "An invitation for this email already exists.", err)
 		}
 		return nil, common.NewDomainError(common.CodeInternalError, "Failed to create invitation.", err)
+	}
+	if s.invitationSender != nil && s.invitationBaseURL != "" {
+		joinLink := s.invitationBaseURL + "/join?token=" + inv.Token.String()
+		workspaceName := ""
+		if w, _ := s.repo.GetByID(ctx, workspaceID); w != nil {
+			workspaceName = w.Name
+		}
+		if sendErr := s.invitationSender.SendWorkspaceInvitation(inv.Email, workspaceName, inviterEmail, joinLink); sendErr != nil {
+			// Log but do not fail the request; invitation is already created
+			_ = sendErr
+		}
 	}
 	resp := model.InvitationResponse{
 		ID:          inv.ID,
@@ -259,14 +284,17 @@ func (s *Service) RemoveMember(ctx context.Context, workspaceID, actorUserID, ta
 	return nil
 }
 
-// AcceptInvitation adds the user to the workspace using the invitation token and deletes the invitation.
-func (s *Service) AcceptInvitation(ctx context.Context, userID uuid.UUID, token uuid.UUID) (*model.WorkspaceResponse, error) {
+// AcceptInvitation adds the user to the workspace using the invitation token and deletes the invitation. userEmail must match the invitation email (case-insensitive).
+func (s *Service) AcceptInvitation(ctx context.Context, userID uuid.UUID, userEmail string, token uuid.UUID) (*model.WorkspaceResponse, error) {
 	inv, w, err := s.repo.GetInvitationByToken(ctx, token)
 	if err != nil {
 		return nil, common.NewDomainError(common.CodeInternalError, "Failed to accept invitation.", err)
 	}
 	if inv == nil || w == nil {
 		return nil, common.NewDomainError(common.CodeNotFound, "Invalid or expired invitation.", nil)
+	}
+	if userEmail != "" && !strings.EqualFold(inv.Email, userEmail) {
+		return nil, common.NewDomainError(common.CodeForbidden, "This invitation was sent to a different email address.", nil)
 	}
 	_, err = s.repo.AddMember(ctx, inv.WorkspaceID, userID, inv.Role, inv.InvitedBy)
 	if err != nil {

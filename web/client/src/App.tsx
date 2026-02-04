@@ -39,6 +39,7 @@ const App = () => (
             <Route path="/forgot-password" element={<ForgotPassword />} />
             <Route path="/reset-password" element={<ResetPassword />} />
             {/* <Route path="/gallery" element={<Gallery />} /> */}
+            <Route path="/join" element={<JoinWorkspace />} />
             <Route path="/join-workspace" element={<JoinWorkspace />} />
             {/* ADD ALL CUSTOM ROUTES ABOVE THE CATCH-ALL "*" ROUTE */}
             <Route path="*" element={<NotFound />} />

@@ -18,6 +18,7 @@ interface DashboardHeaderProps {
   searchQuery: string;
   onSearchChange: (query: string) => void;
   onSignOut: () => void;
+  onInviteClick?: () => void;
 }
 
 export function DashboardHeader({
@@ -25,6 +26,7 @@ export function DashboardHeader({
   searchQuery,
   onSearchChange,
   onSignOut,
+  onInviteClick,
 }: DashboardHeaderProps) {
   const userInitials = user?.email?.slice(0, 2).toUpperCase() || "U";
 
@@ -47,7 +49,7 @@ export function DashboardHeader({
 
       {/* Right side actions - pushed to far right */}
       <div className="flex items-center gap-1 md:gap-2 flex-shrink-0 ml-auto">
-        <Button variant="default" size="sm" className="gap-1 md:gap-2 h-8 md:h-9 px-2 md:px-3">
+        <Button variant="default" size="sm" className="gap-1 md:gap-2 h-8 md:h-9 px-2 md:px-3" onClick={onInviteClick}>
           <UserPlus className="h-3.5 w-3.5 md:h-4 md:w-4 flex-shrink-0" />
           <span className="hidden sm:inline text-xs md:text-sm">Invite Team</span>
         </Button>

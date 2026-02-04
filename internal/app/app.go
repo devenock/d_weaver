@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strings"
 	"syscall"
 	"time"
 
@@ -142,7 +143,18 @@ func New(cfg *config.Config, log pkglogger.Logger) (*App, error) {
 	authHandler.Register(v1)
 
 	workspaceRepo := workspacerepo.New(pool)
-	workspaceSvc := workspacesvc.New(workspaceRepo)
+	var workspaceSvc *workspacesvc.Service
+	if cfg.PasswordReset.ResendAPIKey != "" && cfg.PasswordReset.FromEmail != "" {
+		invitationSender := authemail.NewResendSender(cfg.PasswordReset.ResendAPIKey, cfg.PasswordReset.FromEmail)
+		invitationBaseURL := strings.TrimSuffix(cfg.PasswordReset.BaseURL, "/")
+		if invitationBaseURL != "" {
+			workspaceSvc = workspacesvc.NewWithInvitationEmail(workspaceRepo, invitationSender, invitationBaseURL)
+		} else {
+			workspaceSvc = workspacesvc.New(workspaceRepo)
+		}
+	} else {
+		workspaceSvc = workspacesvc.New(workspaceRepo)
+	}
 	workspaceHandler := workspacehandler.New(workspaceSvc, jwtIssuer, log)
 	workspaceHandler.Register(v1)
 

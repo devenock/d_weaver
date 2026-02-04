@@ -181,6 +181,8 @@ Forgot-password can send the reset link by email using [Resend](https://resend.c
 
 With these set, when a user submits "Forgot password" with their email, the API will send them an email containing the reset link. If you do not set `RESEND_API_KEY` and `PASSWORD_RESET_FROM_EMAIL`, you can still use dev mode: set `PASSWORD_RESET_RETURN_LINK_IN_RESPONSE=true` and `PASSWORD_RESET_BASE_URL` so the API returns the link in the response and the frontend can display it.
 
+**Workspace invitations** use the same Resend config and `PASSWORD_RESET_BASE_URL`. When an owner or admin invites someone by email (e.g. from the dashboard "Invite Team" button), the API sends an email with a "Join workspace" link to `{PASSWORD_RESET_BASE_URL}/join?token=...`. The invitee can sign up or log in, then accept the invitation and be redirected to the dashboard with that workspace selected.
+
 ### Testing the email flow locally (no deployment)
 
 To verify that Resend actually sends the reset email while developing locally:

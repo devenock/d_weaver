@@ -1,9 +1,10 @@
 import { useEffect, useState, useMemo, useCallback } from "react";
-import { useNavigate } from "react-router-dom";
+import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/dashboard/AppSidebar";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
+import { InviteTeamDialog } from "@/components/workspace/InviteTeamDialog";
 import { DashboardContent } from "@/components/dashboard/DashboardContent";
 import { EmbeddedEditor } from "@/components/dashboard/EmbeddedEditor";
 import { EmbeddedWhiteboard } from "@/components/dashboard/EmbeddedWhiteboard";
@@ -17,6 +18,7 @@ type ViewMode = "dashboard" | "editor" | "whiteboard";
 
 const Dashboard = () => {
   const navigate = useNavigate();
+  const location = useLocation();
   const { toast } = useToast();
   const { user, loading: authLoading, logout, getAccessToken } = useAuth();
   const [diagrams, setDiagrams] = useState<DiagramResponse[]>([]);
@@ -26,6 +28,7 @@ const Dashboard = () => {
     null,
   );
   const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
+  const [inviteTeamOpen, setInviteTeamOpen] = useState(false);
 
   const {
     workspaces,
@@ -105,6 +108,16 @@ const Dashboard = () => {
     }
   }, [currentWorkspace?.id, workspacesLoading, user, loadDiagrams]);
 
+  const selectWorkspaceIdFromState = (location.state as { selectWorkspaceId?: string } | null)?.selectWorkspaceId;
+  useEffect(() => {
+    if (!selectWorkspaceIdFromState || workspaces.length === 0) return;
+    const w = workspaces.find((x) => x.id === selectWorkspaceIdFromState);
+    if (w) {
+      selectWorkspace(w);
+      navigate(location.pathname, { replace: true, state: {} });
+    }
+  }, [selectWorkspaceIdFromState, workspaces, selectWorkspace, navigate, location.pathname]);
+
   const handleDiagramClick = (diagram: DiagramResponse) => {
     setSelectedDiagramId(diagram.id);
     if (diagram.diagram_type === "whiteboard") {
@@ -176,6 +189,12 @@ const Dashboard = () => {
             searchQuery={searchQuery}
             onSearchChange={setSearchQuery}
             onSignOut={handleSignOut}
+            onInviteClick={() => setInviteTeamOpen(true)}
+          />
+          <InviteTeamDialog
+            open={inviteTeamOpen}
+            onOpenChange={setInviteTeamOpen}
+            currentWorkspace={currentWorkspace}
           />
 
           {viewMode === "dashboard" && (
