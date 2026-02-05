@@ -57,9 +57,13 @@ export const useWorkspaces = () => {
     loadWorkspaces();
   }, [getAccessToken]);
 
-  const selectWorkspace = (workspace: WorkspaceWithRole) => {
+  const selectWorkspace = (workspace: WorkspaceWithRole | null) => {
     setCurrentWorkspace(workspace);
-    localStorage.setItem("currentWorkspaceId", workspace.id);
+    if (workspace) {
+      localStorage.setItem("currentWorkspaceId", workspace.id);
+    } else {
+      localStorage.removeItem("currentWorkspaceId");
+    }
   };
 
   const createWorkspace = async (name: string, description?: string) => {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { FileText, Pencil, Clock, Plus, ChevronRight, Settings } from "lucide-react";
+import { FileText, Pencil, Clock, Plus, ChevronRight, Settings, User, Users } from "lucide-react";
 import { useNavigate } from "react-router-dom";
 import {
   Sidebar,
@@ -29,7 +29,7 @@ interface AppSidebarProps {
   diagrams: DiagramResponse[];
   whiteboards: DiagramResponse[];
   recentDiagrams: DiagramResponse[];
-  onSelectWorkspace: (workspace: WorkspaceWithRole) => void;
+  onSelectWorkspace: (workspace: WorkspaceWithRole | null) => void;
   onCreateWorkspace: (name: string, description?: string) => Promise<unknown>;
   onDiagramClick: (diagram: DiagramResponse) => void;
   onNewDiagram: () => void;
@@ -57,10 +57,13 @@ export function AppSidebar({
   const navigate = useNavigate();
   const [createWorkspaceOpen, setCreateWorkspaceOpen] = useState(false);
   const [workspaceSettingsOpen, setWorkspaceSettingsOpen] = useState(false);
+  const [personalExpanded, setPersonalExpanded] = useState(true);
   const [workspacesExpanded, setWorkspacesExpanded] = useState(true);
   const [diagramsExpanded, setDiagramsExpanded] = useState(true);
   const [whiteboardsExpanded, setWhiteboardsExpanded] = useState(true);
   const [recentExpanded, setRecentExpanded] = useState(true);
+
+  const isPersonal = currentWorkspace === null;
 
   return (
     <>
@@ -81,7 +84,47 @@ export function AppSidebar({
 
         <SidebarContent>
           <ScrollArea className="flex-1">
-            {/* Workspaces Section */}
+            {/* Personal */}
+            <SidebarGroup className="group-data-[collapsible=icon]:p-2">
+              <div className="hidden group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:gap-1">
+                <SidebarMenuButton
+                  isActive={isPersonal}
+                  onClick={() => onSelectWorkspace(null)}
+                  tooltip="Personal"
+                  className="!w-8 !h-8"
+                >
+                  <User className="h-4 w-4" />
+                </SidebarMenuButton>
+              </div>
+              <Collapsible open={personalExpanded} onOpenChange={setPersonalExpanded} className="group-data-[collapsible=icon]:hidden">
+                <CollapsibleTrigger asChild>
+                  <SidebarGroupLabel className="cursor-pointer hover:text-foreground flex items-center gap-1 text-xs">
+                    <ChevronRight className={`h-3 w-3 transition-transform ${personalExpanded ? 'rotate-90' : ''}`} />
+                    <span>Personal</span>
+                  </SidebarGroupLabel>
+                </CollapsibleTrigger>
+                <CollapsibleContent>
+                  <SidebarGroupContent>
+                    <SidebarMenu>
+                      <SidebarMenuItem>
+                        <SidebarMenuButton
+                          isActive={isPersonal}
+                          onClick={() => onSelectWorkspace(null)}
+                          className="gap-2"
+                        >
+                          <User className="h-3.5 w-3.5 flex-shrink-0 text-muted-foreground" />
+                          <span className="truncate">My diagrams</span>
+                        </SidebarMenuButton>
+                      </SidebarMenuItem>
+                    </SidebarMenu>
+                  </SidebarGroupContent>
+                </CollapsibleContent>
+              </Collapsible>
+            </SidebarGroup>
+
+            <SidebarSeparator />
+
+            {/* Team workspaces */}
             <SidebarGroup className="group-data-[collapsible=icon]:p-2">
               <div className="hidden group-data-[collapsible=icon]:flex group-data-[collapsible=icon]:flex-col group-data-[collapsible=icon]:items-center group-data-[collapsible=icon]:gap-1">
                 {workspaces.slice(0, 3).map((workspace) => (
@@ -111,7 +154,8 @@ export function AppSidebar({
                   <CollapsibleTrigger asChild>
                     <SidebarGroupLabel className="cursor-pointer hover:text-foreground flex items-center gap-1 text-xs">
                       <ChevronRight className={`h-3 w-3 transition-transform ${workspacesExpanded ? 'rotate-90' : ''}`} />
-                      <span>Workspaces</span>
+                      <Users className="h-3 w-3 text-muted-foreground shrink-0" />
+                      <span>Team workspaces</span>
                     </SidebarGroupLabel>
                   </CollapsibleTrigger>
                   <SidebarGroupAction onClick={() => setCreateWorkspaceOpen(true)}>
@@ -121,36 +165,44 @@ export function AppSidebar({
                 <CollapsibleContent>
                   <SidebarGroupContent>
                     <SidebarMenu>
-                      {workspaces.map((workspace) => (
-                        <SidebarMenuItem key={workspace.id}>
-                          <SidebarMenuButton
-                            isActive={currentWorkspace?.id === workspace.id}
-                            onClick={() => onSelectWorkspace(workspace)}
-                            className="justify-between"
-                          >
-                            <div className="flex items-center gap-2">
-                              <div 
-                                className="h-3 w-3 rounded-sm flex-shrink-0" 
-                                style={{ backgroundColor: workspace.color || 'hsl(var(--primary))' }}
-                              />
-                              <span className="truncate">{workspace.name}</span>
-                            </div>
-                            {currentWorkspace?.id === workspace.id && (
-                              <Button
-                                variant="ghost"
-                                size="icon"
-                                className="h-5 w-5 opacity-0 group-hover:opacity-100"
-                                onClick={(e) => {
-                                  e.stopPropagation();
-                                  setWorkspaceSettingsOpen(true);
-                                }}
-                              >
-                                <Settings className="h-3 w-3" />
-                              </Button>
-                            )}
-                          </SidebarMenuButton>
+                      {workspaces.length === 0 ? (
+                        <SidebarMenuItem>
+                          <div className="px-2 py-1.5 text-xs text-muted-foreground">
+                            No team workspaces yet
+                          </div>
                         </SidebarMenuItem>
-                      ))}
+                      ) : (
+                        workspaces.map((workspace) => (
+                          <SidebarMenuItem key={workspace.id}>
+                            <SidebarMenuButton
+                              isActive={currentWorkspace?.id === workspace.id}
+                              onClick={() => onSelectWorkspace(workspace)}
+                              className="justify-between"
+                            >
+                              <div className="flex items-center gap-2">
+                                <div 
+                                  className="h-3 w-3 rounded-sm flex-shrink-0" 
+                                  style={{ backgroundColor: workspace.color || 'hsl(var(--primary))' }}
+                                />
+                                <span className="truncate">{workspace.name}</span>
+                              </div>
+                              {currentWorkspace?.id === workspace.id && (
+                                <Button
+                                  variant="ghost"
+                                  size="icon"
+                                  className="h-5 w-5 opacity-0 group-hover:opacity-100"
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setWorkspaceSettingsOpen(true);
+                                  }}
+                                >
+                                  <Settings className="h-3 w-3" />
+                                </Button>
+                              )}
+                            </SidebarMenuButton>
+                          </SidebarMenuItem>
+                        ))
+                      )}
                       <SidebarMenuItem>
                         <SidebarMenuButton onClick={() => setCreateWorkspaceOpen(true)} className="text-muted-foreground">
                           <Plus className="h-4 w-4 flex-shrink-0" />
