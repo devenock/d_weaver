@@ -1,6 +1,7 @@
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
-import { Plus, Download, Share2, Trash2, Eye, Edit, MoreHorizontal } from "lucide-react";
+import { Plus, Download, Share2, Trash2, Eye, Edit, MoreHorizontal, Clock } from "lucide-react";
 import { CreateNewSection } from "@/components/dashboard/CreateNewSection";
 import { useToast } from "@/hooks/use-toast";
 import {
@@ -9,6 +10,7 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import type { DiagramResponse } from "@/lib/api-types";
 import { deleteDiagram, updateDiagram } from "@/lib/diagram-api";
 import { resolveImageUrl } from "@/lib/api";
@@ -17,6 +19,7 @@ import { getApiErrorMessage } from "@/lib/api";
 interface DashboardContentProps {
   accessToken: string;
   diagrams: DiagramResponse[];
+  recentDiagrams?: DiagramResponse[];
   loading: boolean;
   onDiagramClick: (diagram: DiagramResponse) => void;
   onNewDiagram: () => void;
@@ -29,6 +32,7 @@ interface DashboardContentProps {
 export function DashboardContent({
   accessToken,
   diagrams,
+  recentDiagrams = [],
   loading,
   onDiagramClick,
   onNewDiagram,
@@ -38,6 +42,12 @@ export function DashboardContent({
   onRefresh,
 }: DashboardContentProps) {
   const { toast } = useToast();
+  const [activeTab, setActiveTab] = useState<"recent" | "all">("recent");
+
+  // Determine which diagrams to show based on active tab
+  const diagramsToShow = activeTab === "recent" && recentDiagrams.length > 0 
+    ? recentDiagrams 
+    : diagrams;
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -103,39 +113,9 @@ export function DashboardContent({
     );
   }
 
-  return (
-    <div className="flex-1 p-6 overflow-auto">
-      {/* Create New - primary entry point */}
-      <CreateNewSection
-        onNewDiagram={onNewDiagram}
-        onNewWhiteboard={onNewWhiteboard ?? (() => {})}
-        onFromTemplate={onOpenTemplates ?? (() => {})}
-        onGenerateWithAI={onOpenAIGenerate ?? (() => {})}
-      />
-
-      {/* Your content */}
-      <div className="flex items-center justify-between mb-6">
-        <div>
-          <h1 className="text-2xl font-bold">Your Diagrams</h1>
-          <p className="text-muted-foreground">Create, manage, and share your diagrams</p>
-        </div>
-        <Button onClick={onNewDiagram} className="gap-2">
-          <Plus className="h-4 w-4" />
-          New Diagram
-        </Button>
-      </div>
-
-      {/* Diagrams Grid */}
-      {diagrams.length === 0 ? (
-        <Card className="border-dashed">
-          <CardContent className="py-16 text-center">
-            <p className="text-muted-foreground mb-4">No diagrams yet. Create your first one!</p>
-            <Button onClick={onNewDiagram}>Create a Diagram</Button>
-          </CardContent>
-        </Card>
-      ) : (
-        <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
-          {diagrams.map((diagram) => (
+  const renderDiagramGrid = (diagramsToRender: DiagramResponse[]) => (
+    <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
+      {diagramsToRender.map((diagram) => (
             <Card
               key={diagram.id}
               className="group cursor-pointer hover:shadow-lg transition-all duration-200 hover:border-primary/50"
@@ -207,8 +187,75 @@ export function DashboardContent({
               </CardContent>
             </Card>
           ))}
+    </div>
+  );
+
+  return (
+    <div className="flex-1 p-6 overflow-auto">
+      {/* Create New - primary entry point */}
+      <CreateNewSection
+        onNewDiagram={onNewDiagram}
+        onNewWhiteboard={onNewWhiteboard ?? (() => {})}
+        onFromTemplate={onOpenTemplates ?? (() => {})}
+        onGenerateWithAI={onOpenAIGenerate ?? (() => {})}
+      />
+
+      {/* View switcher and content */}
+      <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "recent" | "all")} className="w-full">
+        <div className="flex items-center justify-between mb-6">
+          <div className="flex items-center gap-4">
+            <div>
+              <h1 className="text-2xl font-bold">Your Diagrams</h1>
+              <p className="text-muted-foreground">Create, manage, and share your diagrams</p>
+            </div>
+            <TabsList className="ml-4">
+              <TabsTrigger value="recent" className="gap-2">
+                <Clock className="h-3.5 w-3.5" />
+                Recent
+              </TabsTrigger>
+              <TabsTrigger value="all">All</TabsTrigger>
+            </TabsList>
+          </div>
+          <Button onClick={onNewDiagram} className="gap-2">
+            <Plus className="h-4 w-4" />
+            New Diagram
+          </Button>
         </div>
-      )}
+
+        <TabsContent value="recent" className="mt-0">
+          {recentDiagrams.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="py-16 text-center">
+                <Clock className="h-12 w-12 mx-auto mb-4 text-muted-foreground" />
+                <p className="text-muted-foreground mb-2">No recent diagrams</p>
+                <p className="text-sm text-muted-foreground mb-4">
+                  {diagrams.length > 0 
+                    ? "Start working on a diagram to see it here" 
+                    : "Create your first diagram to get started"}
+                </p>
+                {diagrams.length === 0 && (
+                  <Button onClick={onNewDiagram}>Create a Diagram</Button>
+                )}
+              </CardContent>
+            </Card>
+          ) : (
+            renderDiagramGrid(recentDiagrams)
+          )}
+        </TabsContent>
+
+        <TabsContent value="all" className="mt-0">
+          {diagrams.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="py-16 text-center">
+                <p className="text-muted-foreground mb-4">No diagrams yet. Create your first one!</p>
+                <Button onClick={onNewDiagram}>Create a Diagram</Button>
+              </CardContent>
+            </Card>
+          ) : (
+            renderDiagramGrid(diagrams)
+          )}
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }

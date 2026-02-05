@@ -84,7 +84,7 @@ const Dashboard = () => {
           (a, b) =>
             new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
         )
-        .slice(0, 5),
+        .slice(0, 12), // Show up to 12 recent items in the Recent view
     [diagramsInScope],
   );
 
@@ -264,6 +264,7 @@ const Dashboard = () => {
             <DashboardContent
               accessToken={getAccessToken() ?? ""}
               diagrams={filteredDiagrams}
+              recentDiagrams={recentDiagrams}
               loading={loading}
               onDiagramClick={handleDiagramClick}
               onNewDiagram={handleNewDiagram}
