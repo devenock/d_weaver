@@ -6,6 +6,7 @@ import { AppSidebar } from "@/components/dashboard/AppSidebar";
 import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { InviteTeamDialog } from "@/components/workspace/InviteTeamDialog";
 import { DashboardContent } from "@/components/dashboard/DashboardContent";
+import { DashboardBreadcrumb } from "@/components/dashboard/DashboardBreadcrumb";
 import { EmbeddedEditor } from "@/components/dashboard/EmbeddedEditor";
 import { EmbeddedWhiteboard } from "@/components/dashboard/EmbeddedWhiteboard";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
@@ -259,6 +260,19 @@ const Dashboard = () => {
             onOpenChange={setAIGenerateOpen}
             onGenerate={handleAIGenerated}
           />
+
+          <div className="px-3 md:px-6 py-2 border-b bg-muted/30 shrink-0">
+            <DashboardBreadcrumb
+              workspaceName={currentWorkspace?.name ?? "Personal"}
+              viewMode={viewMode}
+              diagramTitle={
+                selectedDiagramId
+                  ? diagrams.find((d) => d.id === selectedDiagramId)?.title ?? "Untitled"
+                  : null
+              }
+              onNavigateToDashboard={viewMode !== "dashboard" ? handleCloseEditor : undefined}
+            />
+          </div>
 
           {viewMode === "dashboard" && (
             <DashboardContent
