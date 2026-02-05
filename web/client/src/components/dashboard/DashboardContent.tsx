@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Download, Share2, Trash2, Eye, Edit, MoreHorizontal, Clock } from "lucide-react";
@@ -10,6 +10,13 @@ import {
   DropdownMenuItem,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import type { DiagramResponse } from "@/lib/api-types";
 import { deleteDiagram, updateDiagram } from "@/lib/diagram-api";
@@ -43,11 +50,31 @@ export function DashboardContent({
 }: DashboardContentProps) {
   const { toast } = useToast();
   const [activeTab, setActiveTab] = useState<"recent" | "all">("recent");
+  const [filterType, setFilterType] = useState<"all" | "diagrams" | "whiteboards">("all");
+  const [sortBy, setSortBy] = useState<"updated-desc" | "updated-asc" | "name-asc" | "name-desc">("updated-desc");
 
-  // Determine which diagrams to show based on active tab
-  const diagramsToShow = activeTab === "recent" && recentDiagrams.length > 0 
-    ? recentDiagrams 
-    : diagrams;
+  // Source list for current tab (before filter/sort)
+  const sourceList = activeTab === "recent" && recentDiagrams.length > 0 ? recentDiagrams : diagrams;
+
+  // Filter and sort the list
+  const filteredAndSortedDiagrams = useMemo(() => {
+    let list = [...sourceList];
+    if (filterType === "diagrams") {
+      list = list.filter((d) => d.diagram_type !== "whiteboard");
+    } else if (filterType === "whiteboards") {
+      list = list.filter((d) => d.diagram_type === "whiteboard");
+    }
+    if (sortBy === "updated-desc") {
+      list.sort((a, b) => new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime());
+    } else if (sortBy === "updated-asc") {
+      list.sort((a, b) => new Date(a.updated_at).getTime() - new Date(b.updated_at).getTime());
+    } else if (sortBy === "name-asc") {
+      list.sort((a, b) => a.title.localeCompare(b.title, undefined, { sensitivity: "base" }));
+    } else {
+      list.sort((a, b) => b.title.localeCompare(a.title, undefined, { sensitivity: "base" }));
+    }
+    return list;
+  }, [sourceList, filterType, sortBy]);
 
   const handleDelete = async (id: string, e: React.MouseEvent) => {
     e.stopPropagation();
@@ -202,24 +229,51 @@ export function DashboardContent({
 
       {/* View switcher and content */}
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "recent" | "all")} className="w-full">
-        <div className="flex items-center justify-between mb-6">
-          <div className="flex items-center gap-4">
-            <div>
-              <h1 className="text-2xl font-bold">Your Diagrams</h1>
-              <p className="text-muted-foreground">Create, manage, and share your diagrams</p>
+        <div className="flex flex-col gap-4 mb-6">
+          <div className="flex flex-wrap items-center justify-between gap-4">
+            <div className="flex items-center gap-4">
+              <div>
+                <h1 className="text-2xl font-bold">Your Diagrams</h1>
+                <p className="text-muted-foreground">Create, manage, and share your diagrams</p>
+              </div>
+              <TabsList className="ml-4">
+                <TabsTrigger value="recent" className="gap-2">
+                  <Clock className="h-3.5 w-3.5" />
+                  Recent
+                </TabsTrigger>
+                <TabsTrigger value="all">All</TabsTrigger>
+              </TabsList>
             </div>
-            <TabsList className="ml-4">
-              <TabsTrigger value="recent" className="gap-2">
-                <Clock className="h-3.5 w-3.5" />
-                Recent
-              </TabsTrigger>
-              <TabsTrigger value="all">All</TabsTrigger>
-            </TabsList>
+            <Button onClick={onNewDiagram} className="gap-2">
+              <Plus className="h-4 w-4" />
+              New Diagram
+            </Button>
           </div>
-          <Button onClick={onNewDiagram} className="gap-2">
-            <Plus className="h-4 w-4" />
-            New Diagram
-          </Button>
+          {sourceList.length > 0 && (
+            <div className="flex flex-wrap items-center gap-3">
+              <Select value={filterType} onValueChange={(v) => setFilterType(v as typeof filterType)}>
+                <SelectTrigger className="w-[140px] h-9 text-sm">
+                  <SelectValue placeholder="Filter" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="all">All types</SelectItem>
+                  <SelectItem value="diagrams">Diagrams</SelectItem>
+                  <SelectItem value="whiteboards">Whiteboards</SelectItem>
+                </SelectContent>
+              </Select>
+              <Select value={sortBy} onValueChange={(v) => setSortBy(v as typeof sortBy)}>
+                <SelectTrigger className="w-[200px] h-9 text-sm">
+                  <SelectValue placeholder="Sort by" />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="updated-desc">Last updated (newest)</SelectItem>
+                  <SelectItem value="updated-asc">Last updated (oldest)</SelectItem>
+                  <SelectItem value="name-asc">Name A–Z</SelectItem>
+                  <SelectItem value="name-desc">Name Z–A</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+          )}
         </div>
 
         <TabsContent value="recent" className="mt-0">
@@ -238,8 +292,17 @@ export function DashboardContent({
                 )}
               </CardContent>
             </Card>
+          ) : filteredAndSortedDiagrams.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="py-12 text-center">
+                <p className="text-muted-foreground">No items match the current filter.</p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => setFilterType("all")}>
+                  Clear filter
+                </Button>
+              </CardContent>
+            </Card>
           ) : (
-            renderDiagramGrid(recentDiagrams)
+            renderDiagramGrid(filteredAndSortedDiagrams)
           )}
         </TabsContent>
 
@@ -251,8 +314,17 @@ export function DashboardContent({
                 <Button onClick={onNewDiagram}>Create a Diagram</Button>
               </CardContent>
             </Card>
+          ) : filteredAndSortedDiagrams.length === 0 ? (
+            <Card className="border-dashed">
+              <CardContent className="py-12 text-center">
+                <p className="text-muted-foreground">No items match the current filter.</p>
+                <Button variant="outline" size="sm" className="mt-3" onClick={() => setFilterType("all")}>
+                  Clear filter
+                </Button>
+              </CardContent>
+            </Card>
           ) : (
-            renderDiagramGrid(diagrams)
+            renderDiagramGrid(filteredAndSortedDiagrams)
           )}
         </TabsContent>
       </Tabs>
