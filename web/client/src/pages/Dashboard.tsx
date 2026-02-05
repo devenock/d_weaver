@@ -3,16 +3,19 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/dashboard/AppSidebar";
-import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
+import { DashboardHeader, type SearchScope } from "@/components/dashboard/DashboardHeader";
 import { InviteTeamDialog } from "@/components/workspace/InviteTeamDialog";
 import { DashboardContent } from "@/components/dashboard/DashboardContent";
+import { DashboardBreadcrumb } from "@/components/dashboard/DashboardBreadcrumb";
 import { EmbeddedEditor } from "@/components/dashboard/EmbeddedEditor";
 import { EmbeddedWhiteboard } from "@/components/dashboard/EmbeddedWhiteboard";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
-import { listDiagrams } from "@/lib/diagram-api";
+import { listDiagrams, createDiagram } from "@/lib/diagram-api";
 import type { DiagramResponse } from "@/lib/api-types";
 import { useToast } from "@/hooks/use-toast";
 import { getApiErrorMessage } from "@/lib/api";
+import TemplatesGallery from "@/components/TemplatesGallery";
+import AIGenerateDialog from "@/components/AIGenerateDialog";
 
 type ViewMode = "dashboard" | "editor" | "whiteboard";
 
@@ -24,11 +27,14 @@ const Dashboard = () => {
   const [diagrams, setDiagrams] = useState<DiagramResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+  const [searchScope, setSearchScope] = useState<SearchScope>("current");
   const [selectedDiagramId, setSelectedDiagramId] = useState<string | null>(
     null,
   );
   const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
   const [inviteTeamOpen, setInviteTeamOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [aiGenerateOpen, setAIGenerateOpen] = useState(false);
 
   const {
     workspaces,
@@ -80,19 +86,24 @@ const Dashboard = () => {
           (a, b) =>
             new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
         )
-        .slice(0, 5),
+        .slice(0, 12), // Show up to 12 recent items in the Recent view
     [diagramsInScope],
   );
 
+  // Source list for search based on scope
+  const searchSourceList = useMemo(() => {
+    return searchScope === "all" ? diagrams : diagramsInScope;
+  }, [searchScope, diagrams, diagramsInScope]);
+
   const filteredDiagrams = useMemo(() => {
-    if (!searchQuery.trim()) return diagramsInScope;
+    if (!searchQuery.trim()) return searchSourceList;
     const query = searchQuery.toLowerCase();
-    return diagramsInScope.filter(
+    return searchSourceList.filter(
       (d) =>
         d.title.toLowerCase().includes(query) ||
         d.diagram_type.toLowerCase().includes(query),
     );
-  }, [diagramsInScope, searchQuery]);
+  }, [searchSourceList, searchQuery]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -143,6 +154,52 @@ const Dashboard = () => {
     loadDiagrams(); // Refresh the list
   };
 
+  const handleTemplateSelect = async (code: string, type: string, name: string) => {
+    const token = getAccessToken();
+    if (!token) return;
+    setTemplatesOpen(false);
+    try {
+      const created = await createDiagram(token, {
+        title: name,
+        content: code,
+        diagram_type: type,
+        workspace_id: currentWorkspace?.id ?? null,
+      });
+      setSelectedDiagramId(created.id);
+      setViewMode("editor");
+      loadDiagrams();
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: getApiErrorMessage(err, "Failed to create diagram from template"),
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAIGenerated = async (diagramCode: string) => {
+    const token = getAccessToken();
+    if (!token) return;
+    setAIGenerateOpen(false);
+    try {
+      const created = await createDiagram(token, {
+        title: "AI Generated",
+        content: diagramCode,
+        diagram_type: "flowchart",
+        workspace_id: currentWorkspace?.id ?? null,
+      });
+      setSelectedDiagramId(created.id);
+      setViewMode("editor");
+      loadDiagrams();
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: getApiErrorMessage(err, "Failed to create diagram"),
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleSignOut = async () => {
     await logout();
     navigate("/");
@@ -178,8 +235,6 @@ const Dashboard = () => {
           onDiagramClick={handleDiagramClick}
           onNewDiagram={handleNewDiagram}
           onNewWhiteboard={handleNewWhiteboard}
-          onDiagramsClick={handleNewDiagram}
-          onWhiteboardsClick={handleNewWhiteboard}
           selectedDiagramId={selectedDiagramId}
         />
         <SidebarInset className="flex flex-col">
@@ -187,9 +242,12 @@ const Dashboard = () => {
           <DashboardHeader
             user={user}
             searchQuery={searchQuery}
+            searchScope={searchScope}
             onSearchChange={setSearchQuery}
+            onSearchScopeChange={setSearchScope}
             onSignOut={handleSignOut}
             onInviteClick={() => setInviteTeamOpen(true)}
+            currentWorkspaceName={currentWorkspace?.name ?? null}
           />
           <InviteTeamDialog
             open={inviteTeamOpen}
@@ -197,13 +255,43 @@ const Dashboard = () => {
             currentWorkspace={currentWorkspace}
           />
 
+          {templatesOpen && (
+            <TemplatesGallery
+              onSelectTemplate={handleTemplateSelect}
+              onClose={() => setTemplatesOpen(false)}
+            />
+          )}
+
+          <AIGenerateDialog
+            open={aiGenerateOpen}
+            onOpenChange={setAIGenerateOpen}
+            onGenerate={handleAIGenerated}
+          />
+
+          <div className="px-3 md:px-6 py-2 border-b bg-muted/30 shrink-0">
+            <DashboardBreadcrumb
+              workspaceName={currentWorkspace?.name ?? "Personal"}
+              viewMode={viewMode}
+              diagramTitle={
+                selectedDiagramId
+                  ? diagrams.find((d) => d.id === selectedDiagramId)?.title ?? "Untitled"
+                  : null
+              }
+              onNavigateToDashboard={viewMode !== "dashboard" ? handleCloseEditor : undefined}
+            />
+          </div>
+
           {viewMode === "dashboard" && (
             <DashboardContent
               accessToken={getAccessToken() ?? ""}
               diagrams={filteredDiagrams}
+              recentDiagrams={recentDiagrams}
               loading={loading}
               onDiagramClick={handleDiagramClick}
               onNewDiagram={handleNewDiagram}
+              onNewWhiteboard={handleNewWhiteboard}
+              onOpenTemplates={() => setTemplatesOpen(true)}
+              onOpenAIGenerate={() => setAIGenerateOpen(true)}
               onRefresh={loadDiagrams}
             />
           )}
