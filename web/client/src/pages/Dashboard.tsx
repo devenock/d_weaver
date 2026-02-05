@@ -9,10 +9,12 @@ import { DashboardContent } from "@/components/dashboard/DashboardContent";
 import { EmbeddedEditor } from "@/components/dashboard/EmbeddedEditor";
 import { EmbeddedWhiteboard } from "@/components/dashboard/EmbeddedWhiteboard";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
-import { listDiagrams } from "@/lib/diagram-api";
+import { listDiagrams, createDiagram } from "@/lib/diagram-api";
 import type { DiagramResponse } from "@/lib/api-types";
 import { useToast } from "@/hooks/use-toast";
 import { getApiErrorMessage } from "@/lib/api";
+import TemplatesGallery from "@/components/TemplatesGallery";
+import AIGenerateDialog from "@/components/AIGenerateDialog";
 
 type ViewMode = "dashboard" | "editor" | "whiteboard";
 
@@ -29,6 +31,8 @@ const Dashboard = () => {
   );
   const [viewMode, setViewMode] = useState<ViewMode>("dashboard");
   const [inviteTeamOpen, setInviteTeamOpen] = useState(false);
+  const [templatesOpen, setTemplatesOpen] = useState(false);
+  const [aiGenerateOpen, setAIGenerateOpen] = useState(false);
 
   const {
     workspaces,
@@ -143,6 +147,52 @@ const Dashboard = () => {
     loadDiagrams(); // Refresh the list
   };
 
+  const handleTemplateSelect = async (code: string, type: string, name: string) => {
+    const token = getAccessToken();
+    if (!token) return;
+    setTemplatesOpen(false);
+    try {
+      const created = await createDiagram(token, {
+        title: name,
+        content: code,
+        diagram_type: type,
+        workspace_id: currentWorkspace?.id ?? null,
+      });
+      setSelectedDiagramId(created.id);
+      setViewMode("editor");
+      loadDiagrams();
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: getApiErrorMessage(err, "Failed to create diagram from template"),
+        variant: "destructive",
+      });
+    }
+  };
+
+  const handleAIGenerated = async (diagramCode: string) => {
+    const token = getAccessToken();
+    if (!token) return;
+    setAIGenerateOpen(false);
+    try {
+      const created = await createDiagram(token, {
+        title: "AI Generated",
+        content: diagramCode,
+        diagram_type: "flowchart",
+        workspace_id: currentWorkspace?.id ?? null,
+      });
+      setSelectedDiagramId(created.id);
+      setViewMode("editor");
+      loadDiagrams();
+    } catch (err) {
+      toast({
+        title: "Error",
+        description: getApiErrorMessage(err, "Failed to create diagram"),
+        variant: "destructive",
+      });
+    }
+  };
+
   const handleSignOut = async () => {
     await logout();
     navigate("/");
@@ -197,6 +247,19 @@ const Dashboard = () => {
             currentWorkspace={currentWorkspace}
           />
 
+          {templatesOpen && (
+            <TemplatesGallery
+              onSelectTemplate={handleTemplateSelect}
+              onClose={() => setTemplatesOpen(false)}
+            />
+          )}
+
+          <AIGenerateDialog
+            open={aiGenerateOpen}
+            onOpenChange={setAIGenerateOpen}
+            onGenerate={handleAIGenerated}
+          />
+
           {viewMode === "dashboard" && (
             <DashboardContent
               accessToken={getAccessToken() ?? ""}
@@ -204,6 +267,9 @@ const Dashboard = () => {
               loading={loading}
               onDiagramClick={handleDiagramClick}
               onNewDiagram={handleNewDiagram}
+              onNewWhiteboard={handleNewWhiteboard}
+              onOpenTemplates={() => setTemplatesOpen(true)}
+              onOpenAIGenerate={() => setAIGenerateOpen(true)}
               onRefresh={loadDiagrams}
             />
           )}

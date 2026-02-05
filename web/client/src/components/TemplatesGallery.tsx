@@ -231,8 +231,8 @@ const TEMPLATES = [
   }
 ];
 
-interface TemplatesGalleryProps {
-  onSelectTemplate: (code: string, type: string) => void;
+export interface TemplatesGalleryProps {
+  onSelectTemplate: (code: string, type: string, name: string) => void;
   onClose: () => void;
 }
 
@@ -257,7 +257,7 @@ const TemplatesGallery = ({ onSelectTemplate, onClose }: TemplatesGalleryProps) 
                 key={template.id}
                 className="p-4 hover:shadow-lg transition-shadow cursor-pointer border-2 hover:border-primary"
                 onClick={() => {
-                  onSelectTemplate(template.code, template.type);
+                  onSelectTemplate(template.code, template.type, template.name);
                   onClose();
                 }}
               >

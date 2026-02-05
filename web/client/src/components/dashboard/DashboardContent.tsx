@@ -1,6 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Download, Share2, Trash2, Eye, Edit, MoreHorizontal } from "lucide-react";
+import { CreateNewSection } from "@/components/dashboard/CreateNewSection";
 import { useToast } from "@/hooks/use-toast";
 import {
   DropdownMenu,
@@ -19,6 +20,9 @@ interface DashboardContentProps {
   loading: boolean;
   onDiagramClick: (diagram: DiagramResponse) => void;
   onNewDiagram: () => void;
+  onNewWhiteboard?: () => void;
+  onOpenTemplates?: () => void;
+  onOpenAIGenerate?: () => void;
   onRefresh: () => void;
 }
 
@@ -28,6 +32,9 @@ export function DashboardContent({
   loading,
   onDiagramClick,
   onNewDiagram,
+  onNewWhiteboard,
+  onOpenTemplates,
+  onOpenAIGenerate,
   onRefresh,
 }: DashboardContentProps) {
   const { toast } = useToast();
@@ -98,8 +105,16 @@ export function DashboardContent({
 
   return (
     <div className="flex-1 p-6 overflow-auto">
-      {/* Quick Actions */}
-      <div className="flex items-center justify-between mb-8">
+      {/* Create New - primary entry point */}
+      <CreateNewSection
+        onNewDiagram={onNewDiagram}
+        onNewWhiteboard={onNewWhiteboard ?? (() => {})}
+        onFromTemplate={onOpenTemplates ?? (() => {})}
+        onGenerateWithAI={onOpenAIGenerate ?? (() => {})}
+      />
+
+      {/* Your content */}
+      <div className="flex items-center justify-between mb-6">
         <div>
           <h1 className="text-2xl font-bold">Your Diagrams</h1>
           <p className="text-muted-foreground">Create, manage, and share your diagrams</p>

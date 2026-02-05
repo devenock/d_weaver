@@ -87,6 +87,7 @@ import { KeyboardShortcutsPanel } from "./editor/KeyboardShortcutsPanel";
 import { createFabricConnector, updateConnectorPath } from "./editor/CurvedConnector";
 import type { ConnectorStyle, ArrowStyle } from "./editor/CurvedConnector";
 import { createIconDataUrl } from "./editor/ShapeRenderer";
+import mermaid from "mermaid";
 
 interface EmbeddedEditorProps {
   diagramId?: string | null;
@@ -239,6 +240,10 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
   // Keyboard shortcuts panel
   const [showKeyboardShortcuts, setShowKeyboardShortcuts] = useState(false);
+
+  // Mermaid diagram (when content is mermaid code, not Fabric JSON)
+  const [mermaidContent, setMermaidContent] = useState<string | null>(null);
+  const mermaidContainerRef = useRef<HTMLDivElement>(null);
 
   // Track changes
   const markChanged = useCallback(() => {
@@ -466,6 +471,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
         try {
           const canvasData = JSON.parse(data.content);
+          setMermaidContent(null);
           if (canvasData.objects) {
             await fabricCanvas.loadFromJSON(canvasData, async () => {
               // Restore images in groups after loading
@@ -514,7 +520,11 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
             });
           }
         } catch {
-          // If not JSON, it might be mermaid code
+          // Content is mermaid code (e.g. from template or AI)
+          const trimmed = String(data.content || "").trim();
+          if (trimmed.length > 0) {
+            setMermaidContent(trimmed);
+          }
         }
       } catch (err) {
         toast.error(getApiErrorMessage(err, "Failed to load diagram"));
@@ -523,6 +533,24 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
     loadDiagram();
   }, [diagramId, fabricCanvas, getAccessToken]);
+
+  // Render mermaid when content is mermaid code
+  useEffect(() => {
+    if (!mermaidContent || !mermaidContainerRef.current) return;
+    const container = mermaidContainerRef.current;
+    container.innerHTML = "";
+    const id = `mermaid-editor-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    mermaid.initialize({ startOnLoad: false, securityLevel: "loose" });
+    mermaid
+      .render(id, mermaidContent)
+      .then(({ svg }) => {
+        if (mermaidContainerRef.current) mermaidContainerRef.current.innerHTML = svg;
+      })
+      .catch((err) => {
+        console.error("Mermaid render error:", err);
+        container.innerHTML = `<div class="p-4 text-sm text-muted-foreground">Could not render diagram. The content may be invalid Mermaid syntax.</div>`;
+      });
+  }, [mermaidContent]);
 
   // Find empty position for new shape
   const findEmptyPosition = useCallback(
@@ -2081,15 +2109,22 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           </div>
         </div>
 
-        {/* Canvas */}
+        {/* Canvas or Mermaid preview */}
         <div
           ref={containerRef}
-          className="flex-1 relative bg-muted/30"
+          className="flex-1 relative bg-muted/30 min-h-0"
           tabIndex={0}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
         >
-          <canvas ref={canvasRef} className="absolute inset-0" tabIndex={0} />
+          {mermaidContent ? (
+            <div
+              ref={mermaidContainerRef}
+              className="absolute inset-0 overflow-auto flex items-center justify-center p-6 bg-background"
+            />
+          ) : (
+            <canvas ref={canvasRef} className="absolute inset-0" tabIndex={0} />
+          )}
         </div>
       </div>
 
