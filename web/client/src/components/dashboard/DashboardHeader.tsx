@@ -1,5 +1,5 @@
 import type { ApiUser } from "@/lib/auth-api";
-import { Search, Bell, Settings, LogOut, UserPlus } from "lucide-react";
+import { Search, Bell, Settings, LogOut, UserPlus, Filter } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Avatar, AvatarFallback } from "@/components/ui/avatar";
@@ -12,38 +12,72 @@ import {
   DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from "@/components/ui/select";
+
+export type SearchScope = "current" | "all";
 
 interface DashboardHeaderProps {
   user: ApiUser | null;
   searchQuery: string;
+  searchScope: SearchScope;
   onSearchChange: (query: string) => void;
+  onSearchScopeChange: (scope: SearchScope) => void;
   onSignOut: () => void;
   onInviteClick?: () => void;
+  currentWorkspaceName?: string | null;
 }
 
 export function DashboardHeader({
   user,
   searchQuery,
+  searchScope,
   onSearchChange,
+  onSearchScopeChange,
   onSignOut,
   onInviteClick,
+  currentWorkspaceName,
 }: DashboardHeaderProps) {
   const userInitials = user?.email?.slice(0, 2).toUpperCase() || "U";
+  const scopeLabel = searchScope === "current" 
+    ? (currentWorkspaceName ? `In ${currentWorkspaceName}` : "Personal")
+    : "All";
 
   return (
     <header className="sticky top-0 z-40 flex h-14 md:h-16 w-full items-center gap-2 md:gap-4 border-b bg-background/95 backdrop-blur supports-[backdrop-filter]:bg-background/60 px-3 md:px-6 shrink-0">
       <SidebarTrigger className="-ml-1 flex-shrink-0" />
 
-      {/* Search Bar */}
-      <div className="flex-1 min-w-0 max-w-lg">
-        <div className="relative">
-          <Search className="absolute left-2.5 md:left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <Input
-            placeholder="Search..."
-            value={searchQuery}
-            onChange={(e) => onSearchChange(e.target.value)}
-            className="pl-8 md:pl-10 h-9 md:h-10 bg-muted/50 border-0 focus-visible:ring-1 text-sm w-full"
-          />
+      {/* Search Bar with Scope */}
+      <div className="flex-1 min-w-0 max-w-2xl">
+        <div className="flex items-center gap-2">
+          <div className="relative flex-1 min-w-0">
+            <Search className="absolute left-2.5 md:left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <Input
+              placeholder="Search..."
+              value={searchQuery}
+              onChange={(e) => onSearchChange(e.target.value)}
+              className="pl-8 md:pl-10 h-9 md:h-10 bg-muted/50 border-0 focus-visible:ring-1 text-sm w-full"
+            />
+          </div>
+          <Select value={searchScope} onValueChange={(v) => onSearchScopeChange(v as SearchScope)}>
+            <SelectTrigger className="w-[140px] h-9 text-xs shrink-0">
+              <Filter className="h-3 w-3 mr-1.5 text-muted-foreground shrink-0" />
+              <SelectValue>
+                <span className="truncate">{scopeLabel}</span>
+              </SelectValue>
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="current">
+                {currentWorkspaceName ? `In ${currentWorkspaceName}` : "Personal"}
+              </SelectItem>
+              <SelectItem value="all">All diagrams</SelectItem>
+            </SelectContent>
+          </Select>
         </div>
       </div>
 
