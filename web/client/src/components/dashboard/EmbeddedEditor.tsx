@@ -359,6 +359,24 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
     canvas.on("object:modified", saveState);
     canvas.on("object:removed", saveState);
 
+    // Double-click on a shape with a label: enter inline editing for the label
+    const handleDblClick = (e: any) => {
+      const target = e.target;
+      if (!target) return;
+      let textObj: Textbox | null = null;
+      if (target instanceof FabricGroup) {
+        const textChild = target.getObjects().find((o) => o instanceof Textbox);
+        textObj = textChild ? (textChild as Textbox) : null;
+      } else if (target instanceof Textbox) {
+        textObj = target;
+      }
+      if (textObj && typeof textObj.enterEditing === "function") {
+        textObj.enterEditing();
+        textObj.hiddenTextarea?.focus();
+      }
+    };
+    canvas.on("mouse:dblclick", handleDblClick);
+
     fabricCanvasRef.current = canvas;
     setFabricCanvas(canvas);
 
@@ -374,6 +392,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       canvas.off("object:added", saveState);
       canvas.off("object:modified", saveState);
       canvas.off("object:removed", saveState);
+      canvas.off("mouse:dblclick", handleDblClick);
       canvas.dispose();
       fabricCanvasRef.current = null;
     };
@@ -639,18 +658,18 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           throw new Error('Image element not available');
         }
 
-        // Create label text
+        // Create label text centered in the shape
         const labelText = new Textbox(label, {
           fontSize: 11,
           fill: '#ffffff',
           fontFamily: 'Inter, sans-serif',
           fontWeight: 'bold',
           originX: 'center',
-          originY: 'top',
+          originY: 'center',
           textAlign: 'center',
           width: shapeWidth - 10,
           left: shapeWidth / 2,
-          top: shapeHeight - 22,
+          top: shapeHeight / 2,
           selectable: false,
           evented: false,
         });
@@ -1075,26 +1094,35 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
     toast.info("Click on another shape to complete the connection");
   }, []);
 
-  const completeConnector = useCallback((endObj: FabricObject) => {
-    if (!fabricCanvas || !connectorStart) return;
+  // Create a connector between two shapes (used by both click-click and drag-to-connect)
+  const createConnectorBetween = useCallback(
+    (startObj: FabricObject, endObj: FabricObject) => {
+      if (!fabricCanvas) return;
+      const connector = createFabricConnector(
+        startObj,
+        endObj,
+        connectorStyle,
+        arrowStyle,
+        strokeColor,
+        strokeWidth
+      );
+      fabricCanvas.add(connector);
+      fabricCanvas.sendObjectToBack(connector);
+      fabricCanvas.renderAll();
+      setConnectorStart(null);
+      setActiveTool("select");
+      toast.success("Connector added");
+    },
+    [fabricCanvas, connectorStyle, arrowStyle, strokeColor, strokeWidth]
+  );
 
-    const connector = createFabricConnector(
-      connectorStart.obj,
-      endObj,
-      connectorStyle,
-      arrowStyle,
-      strokeColor,
-      strokeWidth
-    );
-
-    fabricCanvas.add(connector);
-    fabricCanvas.sendObjectToBack(connector);
-    fabricCanvas.renderAll();
-
-    setConnectorStart(null);
-    setActiveTool("select");
-    toast.success("Connector added");
-  }, [fabricCanvas, connectorStart, connectorStyle, arrowStyle, strokeColor, strokeWidth]);
+  const completeConnector = useCallback(
+    (endObj: FabricObject) => {
+      if (!connectorStart) return;
+      createConnectorBetween(connectorStart.obj, endObj);
+    },
+    [connectorStart, createConnectorBetween]
+  );
 
   // Canvas click handler for connector mode
   useEffect(() => {
@@ -1118,6 +1146,79 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       fabricCanvas.off("mouse:down", handleMouseDown);
     };
   }, [fabricCanvas, activeTool, connectorStart, startConnector, completeConnector]);
+
+  // Auto-connect in select mode: click shape A then click shape B, or drag from A and release on B
+  useEffect(() => {
+    if (!fabricCanvas) return;
+    const connectDragStartRef = { current: null as FabricObject | null };
+
+    const handleMouseDown = (e: any) => {
+      if (activeTool !== "select") return;
+      const target = e.target;
+      if (!target || (target as any).isConnector) return;
+      const shapeId = (target as any).shapeId;
+      const src = connectDragStartRef.current;
+      if (shapeId) {
+        if (src && target !== src) {
+          createConnectorBetween(src, target);
+          connectDragStartRef.current = null;
+        } else if (!src) {
+          connectDragStartRef.current = target;
+          toast.info("Click another shape to connect, or drag to it and release");
+        }
+      } else {
+        connectDragStartRef.current = null;
+      }
+    };
+
+    const handleMouseUp = (e: any) => {
+      const src = connectDragStartRef.current;
+      if (src) {
+        const pointer = fabricCanvas.getPointer(e.e);
+        const found = fabricCanvas.getObjects().find(
+          (o) =>
+            o !== src &&
+            (o as any).shapeId &&
+            !(o as any).isConnector &&
+            o.containsPoint(pointer)
+        );
+        if (found) {
+          createConnectorBetween(src, found);
+        }
+      }
+      connectDragStartRef.current = null;
+    };
+
+    fabricCanvas.on("mouse:down", handleMouseDown);
+    fabricCanvas.on("mouse:up", handleMouseUp);
+    return () => {
+      fabricCanvas.off("mouse:down", handleMouseDown);
+      fabricCanvas.off("mouse:up", handleMouseUp);
+    };
+  }, [fabricCanvas, activeTool, createConnectorBetween]);
+
+  // Sync label when user finishes editing the text inline (editing:exited)
+  useEffect(() => {
+    if (!fabricCanvas) return;
+    const handleEditingExited = (e: any) => {
+      const textObj = e.target;
+      if (!(textObj instanceof Textbox)) return;
+      const newText = textObj.text ?? "";
+      setObjectLabel(newText);
+      // Update customLabel on parent group if this text is inside a shape group
+      const objects = fabricCanvas.getObjects();
+      for (const obj of objects) {
+        if (obj instanceof FabricGroup && obj.getObjects().indexOf(textObj) >= 0) {
+          (obj as any).customLabel = newText;
+          setSelectedObject(obj);
+          break;
+        }
+      }
+      fabricCanvas.renderAll();
+    };
+    fabricCanvas.on("editing:exited", handleEditingExited);
+    return () => fabricCanvas.off("editing:exited", handleEditingExited);
+  }, [fabricCanvas]);
 
   const handleUndo = useCallback(async () => {
     if (!fabricCanvas || historyStep === 0) return;
