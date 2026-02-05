@@ -76,7 +76,9 @@ export const useWorkspaces = () => {
       });
       toast({ title: "Success", description: "Workspace created successfully!" });
       await loadWorkspaces();
-      const withRole: WorkspaceWithRole = { ...created, role: "owner" };
+      // Select the newly created workspace (it will be in the refreshed list)
+      // The API response should include role, but if not, we add it
+      const withRole: WorkspaceWithRole = { ...created, role: created.role || "owner" };
       selectWorkspace(withRole);
       return withRole;
     } catch (err) {

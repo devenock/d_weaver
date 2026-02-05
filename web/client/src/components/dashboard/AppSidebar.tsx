@@ -34,8 +34,6 @@ interface AppSidebarProps {
   onDiagramClick: (diagram: DiagramResponse) => void;
   onNewDiagram: () => void;
   onNewWhiteboard: () => void;
-  onDiagramsClick?: () => void;
-  onWhiteboardsClick?: () => void;
   selectedDiagramId: string | null;
 }
 
@@ -231,15 +229,7 @@ export function AppSidebar({
               <Collapsible open={diagramsExpanded} onOpenChange={setDiagramsExpanded} className="group-data-[collapsible=icon]:hidden">
                 <div className="flex items-center justify-between">
                   <CollapsibleTrigger asChild>
-                    <SidebarGroupLabel 
-                      className="cursor-pointer hover:text-foreground flex items-center gap-1 text-xs"
-                      onClick={(e) => {
-                        if (onDiagramsClick) {
-                          e.stopPropagation();
-                          onDiagramsClick();
-                        }
-                      }}
-                    >
+                    <SidebarGroupLabel className="cursor-pointer hover:text-foreground flex items-center gap-1 text-xs">
                       <ChevronRight className={`h-3 w-3 transition-transform ${diagramsExpanded ? 'rotate-90' : ''}`} />
                       <span>Diagrams</span>
                     </SidebarGroupLabel>
@@ -292,15 +282,7 @@ export function AppSidebar({
               <Collapsible open={whiteboardsExpanded} onOpenChange={setWhiteboardsExpanded} className="group-data-[collapsible=icon]:hidden">
                 <div className="flex items-center justify-between">
                   <CollapsibleTrigger asChild>
-                    <SidebarGroupLabel 
-                      className="cursor-pointer hover:text-foreground flex items-center gap-1 text-xs"
-                      onClick={(e) => {
-                        if (onWhiteboardsClick) {
-                          e.stopPropagation();
-                          onWhiteboardsClick();
-                        }
-                      }}
-                    >
+                    <SidebarGroupLabel className="cursor-pointer hover:text-foreground flex items-center gap-1 text-xs">
                       <ChevronRight className={`h-3 w-3 transition-transform ${whiteboardsExpanded ? 'rotate-90' : ''}`} />
                       <span>Whiteboards</span>
                     </SidebarGroupLabel>

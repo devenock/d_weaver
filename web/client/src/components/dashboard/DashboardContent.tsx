@@ -231,23 +231,33 @@ export function DashboardContent({
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as "recent" | "all")} className="w-full">
         <div className="flex flex-col gap-4 mb-6">
           <div className="flex flex-wrap items-center justify-between gap-4">
-            <div className="flex items-center gap-4">
-              <div>
-                <h1 className="text-2xl font-bold">Your Diagrams</h1>
-                <p className="text-muted-foreground">Create, manage, and share your diagrams</p>
+            <div>
+              <h1 className="text-2xl font-bold">Your Diagrams</h1>
+              <p className="text-muted-foreground">Create, manage, and share your diagrams</p>
+            </div>
+            {diagrams.length > 0 ? (
+              <div className="flex items-center gap-4">
+                <TabsList>
+                  <TabsTrigger value="recent" className="gap-2">
+                    <Clock className="h-3.5 w-3.5" />
+                    Recent
+                  </TabsTrigger>
+                  <TabsTrigger value="all">All</TabsTrigger>
+                </TabsList>
+                <Button onClick={onNewDiagram} className="gap-2">
+                  <Plus className="h-4 w-4" />
+                  New Diagram
+                </Button>
               </div>
-              <TabsList className="ml-4">
+            ) : (
+              <TabsList>
                 <TabsTrigger value="recent" className="gap-2">
                   <Clock className="h-3.5 w-3.5" />
                   Recent
                 </TabsTrigger>
                 <TabsTrigger value="all">All</TabsTrigger>
               </TabsList>
-            </div>
-            <Button onClick={onNewDiagram} className="gap-2">
-              <Plus className="h-4 w-4" />
-              New Diagram
-            </Button>
+            )}
           </div>
           {sourceList.length > 0 && (
             <div className="flex flex-wrap items-center gap-3">

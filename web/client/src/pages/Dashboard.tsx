@@ -235,8 +235,6 @@ const Dashboard = () => {
           onDiagramClick={handleDiagramClick}
           onNewDiagram={handleNewDiagram}
           onNewWhiteboard={handleNewWhiteboard}
-          onDiagramsClick={handleNewDiagram}
-          onWhiteboardsClick={handleNewWhiteboard}
           selectedDiagramId={selectedDiagramId}
         />
         <SidebarInset className="flex flex-col">
