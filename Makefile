@@ -43,6 +43,9 @@ help:
 
 # --- Docker ---
 COMPOSE_FILE := deployments/docker-compose.yml
+# Enable BuildKit for faster builds with cache mounts (requires Docker 20.10+)
+export DOCKER_BUILDKIT=1
+export COMPOSE_DOCKER_CLI_BUILD=1
 
 docker-up:
 	docker compose -f $(COMPOSE_FILE) up -d
@@ -84,8 +87,10 @@ docker-ps:
 	docker compose -f $(COMPOSE_FILE) ps
 
 # Rebuild and start only the client (e.g. after frontend or Dockerfile changes)
+# Uses BuildKit cache mounts for faster yarn/npm installs
 docker-build-client:
-	docker compose -f $(COMPOSE_FILE) up -d --build client
+	docker compose -f $(COMPOSE_FILE) build client
+	docker compose -f $(COMPOSE_FILE) up -d client
 
 # --- Backend (Go API) ---
 API_MAIN := ./cmd/api

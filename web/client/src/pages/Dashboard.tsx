@@ -3,7 +3,7 @@ import { useNavigate, useLocation } from "react-router-dom";
 import { useAuth } from "@/contexts/AuthContext";
 import { SidebarProvider, SidebarInset } from "@/components/ui/sidebar";
 import { AppSidebar } from "@/components/dashboard/AppSidebar";
-import { DashboardHeader, type SearchScope } from "@/components/dashboard/DashboardHeader";
+import { DashboardHeader } from "@/components/dashboard/DashboardHeader";
 import { InviteTeamDialog } from "@/components/workspace/InviteTeamDialog";
 import { DashboardContent } from "@/components/dashboard/DashboardContent";
 import { DashboardBreadcrumb } from "@/components/dashboard/DashboardBreadcrumb";
@@ -27,7 +27,6 @@ const Dashboard = () => {
   const [diagrams, setDiagrams] = useState<DiagramResponse[]>([]);
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
-  const [searchScope, setSearchScope] = useState<SearchScope>("current");
   const [selectedDiagramId, setSelectedDiagramId] = useState<string | null>(
     null,
   );
@@ -90,20 +89,16 @@ const Dashboard = () => {
     [diagramsInScope],
   );
 
-  // Source list for search based on scope
-  const searchSourceList = useMemo(() => {
-    return searchScope === "all" ? diagrams : diagramsInScope;
-  }, [searchScope, diagrams, diagramsInScope]);
-
+  // Search always searches all diagrams globally
   const filteredDiagrams = useMemo(() => {
-    if (!searchQuery.trim()) return searchSourceList;
+    if (!searchQuery.trim()) return diagramsInScope;
     const query = searchQuery.toLowerCase();
-    return searchSourceList.filter(
+    return diagrams.filter(
       (d) =>
         d.title.toLowerCase().includes(query) ||
         d.diagram_type.toLowerCase().includes(query),
     );
-  }, [searchSourceList, searchQuery]);
+  }, [diagrams, diagramsInScope, searchQuery]);
 
   useEffect(() => {
     if (authLoading) return;
@@ -242,12 +237,9 @@ const Dashboard = () => {
           <DashboardHeader
             user={user}
             searchQuery={searchQuery}
-            searchScope={searchScope}
             onSearchChange={setSearchQuery}
-            onSearchScopeChange={setSearchScope}
             onSignOut={handleSignOut}
             onInviteClick={() => setInviteTeamOpen(true)}
-            currentWorkspaceName={currentWorkspace?.name ?? null}
           />
           <InviteTeamDialog
             open={inviteTeamOpen}
