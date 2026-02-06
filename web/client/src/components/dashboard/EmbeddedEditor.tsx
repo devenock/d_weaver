@@ -452,6 +452,27 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
               const objects = fabricCanvas.getObjects();
               for (const obj of objects) {
                 (obj as any).set({ hasBorders: false, hasControls: false });
+                if (obj.type === "group") {
+                  const grp = obj as FabricGroup;
+                  grp.setCoords();
+                  const ox = (grp as any).originX ?? "left";
+                  const oy = (grp as any).originY ?? "top";
+                  if (ox !== "center" || oy !== "center") {
+                    const w = (grp as any).width ?? 120;
+                    const h = (grp as any).height ?? 80;
+                    const currentLeft = grp.left ?? 0;
+                    const currentTop = grp.top ?? 0;
+                    const topLeftX = ox === "center" ? currentLeft - w / 2 : ox === "right" ? currentLeft - w : currentLeft;
+                    const topLeftY = oy === "center" ? currentTop - h / 2 : oy === "bottom" ? currentTop - h : currentTop;
+                    grp.set({
+                      originX: "center",
+                      originY: "center",
+                      left: topLeftX + w / 2,
+                      top: topLeftY + h / 2,
+                    });
+                    grp.setCoords();
+                  }
+                }
                 if (obj.type === 'group') {
                   const group = obj as FabricGroup;
                   const groupObjects = group.getObjects();
@@ -568,6 +589,20 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
     },
     [fabricCanvas]
   );
+
+  // Center group origin so the selection wrapper is centered on the shape (no misalignment)
+  const centerGroupOrigin = useCallback((group: FabricGroup, topLeftX: number, topLeftY: number) => {
+    group.setCoords();
+    const w = (group as any).width ?? 120;
+    const h = (group as any).height ?? 80;
+    group.set({
+      originX: "center",
+      originY: "center",
+      left: topLeftX + w / 2,
+      top: topLeftY + h / 2,
+    });
+    group.setCoords();
+  }, []);
 
   // Create shape based on type - all shapes now grouped with text
   const createShape = useCallback(async (shapeType: ShapeType, color: string, left: number, top: number, label: string): Promise<FabricObject> => {
@@ -722,6 +757,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           }
         }
 
+        centerGroupOrigin(group, left, top);
+
         (group as any).shapeId = shapeId;
         (group as any).shapeType = shapeType;
         (group as any).customLabel = label;
@@ -766,6 +803,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           });
 
           const group = new FabricGroup([shapeObj, labelText], { left, top });
+          centerGroupOrigin(group, left, top);
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -795,6 +833,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           });
 
           const group = new FabricGroup([shapeObj, labelText], { left, top });
+          centerGroupOrigin(group, left, top);
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -825,6 +864,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           });
 
           const group = new FabricGroup([shapeObj, labelText], { left, top });
+          centerGroupOrigin(group, left, top);
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -854,6 +894,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           });
 
           const group = new FabricGroup([shapeObj, labelText], { left, top });
+          centerGroupOrigin(group, left, top);
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -883,6 +924,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           });
 
           const group = new FabricGroup([shapeObj, labelText], { left, top });
+          centerGroupOrigin(group, left, top);
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -912,6 +954,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           });
 
           const group = new FabricGroup([shapeObj, labelText], { left, top });
+          centerGroupOrigin(group, left, top);
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -942,6 +985,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           });
 
           const group = new FabricGroup([shapeObj, labelText], { left, top });
+          centerGroupOrigin(group, left, top);
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -972,6 +1016,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           });
 
           const group = new FabricGroup([shapeObj, labelText], { left, top });
+          centerGroupOrigin(group, left, top);
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -996,6 +1041,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           });
 
           const group = new FabricGroup([shapeObj, labelText], { left, top });
+          centerGroupOrigin(group, left, top);
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -1021,6 +1067,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           });
 
           const group = new FabricGroup([shapeObj, labelText], { left, top });
+          centerGroupOrigin(group, left, top);
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -1029,7 +1076,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         }
       }
     }
-  }, []);
+  }, [centerGroupOrigin]);
 
   // Add component with smart positioning
   const addComponent = useCallback(
