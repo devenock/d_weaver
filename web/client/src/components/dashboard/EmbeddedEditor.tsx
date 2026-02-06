@@ -10,6 +10,12 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Slider } from "@/components/ui/slider";
 import { Toggle } from "@/components/ui/toggle";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   AlertDialog,
   AlertDialogAction,
   AlertDialogCancel,
@@ -72,6 +78,13 @@ import {
   Search,
   Keyboard,
   Link2,
+  Copy as CopyIcon,
+  PenTool as PenToolIcon,
+  Smile,
+  MessageSquare as CommentIcon,
+  Sparkles,
+  MoreVertical,
+  Plus,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -212,6 +225,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
   // Selection & Properties
   const [selectedObject, setSelectedObject] = useState<FabricObject | null>(null);
+  const [selectionOverlay, setSelectionOverlay] = useState<{ left: number; top: number; width: number; height: number } | null>(null);
+  const [toolbarPosition, setToolbarPosition] = useState<{ x: number; y: number } | null>(null);
   const [fillColor, setFillColor] = useState("#6366F1");
   const [strokeColor, setStrokeColor] = useState("#4338CA");
   const [strokeWidth, setStrokeWidth] = useState(2);
@@ -221,6 +236,65 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   const [isBold, setIsBold] = useState(false);
   const [isItalic, setIsItalic] = useState(false);
   const [fontFamily, setFontFamily] = useState("Inter, sans-serif");
+
+  // Creately-style overlays (selection outline + floating toolbar) rendered as HTML,
+  // not Fabric controls. Must be defined before effects that reference it.
+  const updateSelectionOverlays = useCallback(
+    (obj: FabricObject) => {
+      if (!fabricCanvas || !containerRef.current || !obj) return;
+      const canvasEl = fabricCanvas.getElement();
+      if (!canvasEl) return;
+
+      const objBounds = obj.getBoundingRect(); // in canvas coordinates (pre-zoom)
+      const containerRect = containerRef.current.getBoundingClientRect();
+      const canvasRect = canvasEl.getBoundingClientRect();
+      const zoomLevel = fabricCanvas.getZoom();
+      const vpt = fabricCanvas.viewportTransform;
+      if (!vpt) return;
+
+      const offsetX = containerRect.left - canvasRect.left;
+      const offsetY = containerRect.top - canvasRect.top;
+
+      const left = objBounds.left * zoomLevel + vpt[4] + offsetX;
+      const top = objBounds.top * zoomLevel + vpt[5] + offsetY;
+      const width = objBounds.width * zoomLevel;
+      const height = objBounds.height * zoomLevel;
+
+      setSelectionOverlay({ left, top, width, height });
+
+      // Toolbar: positioned above and slightly to the right (matching Creately's positioning)
+      const toolbarOffsetX = width / 2 + 20; // Slightly offset to the right
+      const toolbarOffsetY = -44; // Above the selection
+      const x = left + toolbarOffsetX;
+      const y = Math.max(10, top + toolbarOffsetY);
+      setToolbarPosition({ x, y });
+    },
+    [fabricCanvas]
+  );
+
+  // Update connected lines when object moves
+  // Must be defined before effects that reference it (avoids "before initialization" crash).
+  const updateConnectedLines = useCallback((canvas: FabricCanvas, target: FabricObject | undefined) => {
+    if (!target) return;
+    const targetId = (target as any).shapeId;
+
+    canvas.getObjects().forEach((obj) => {
+      if ((obj as any).isConnector && obj instanceof Path) {
+        const startId = (obj as any).startObjectId;
+        const endId = (obj as any).endObjectId;
+
+        if (startId === targetId || endId === targetId) {
+          const startObj = canvas.getObjects().find((o) => (o as any).shapeId === startId);
+          const endObj = canvas.getObjects().find((o) => (o as any).shapeId === endId);
+
+          if (startObj && endObj) {
+            updateConnectorPath(obj, startObj, endObj);
+          }
+        }
+      }
+    });
+    canvas.renderAll();
+  }, []);
 
   // Connector settings
   const [connectorStyle, setConnectorStyle] = useState<ConnectorStyle>("curved");
@@ -267,52 +341,43 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       preserveObjectStacking: true,
     });
 
-    // Selection: dashed rectangle and handles wrap the shape (label and icon)
-    canvas.selection = true;
-    canvas.selectionColor = "rgba(99, 102, 241, 0.08)";
-    canvas.selectionBorderColor = "#6366f1";
-    canvas.selectionLineWidth = 2;
+    // Completely disable Fabric's selection UI - override rendering to prevent any selection box
+    canvas.selection = false;
+    canvas.selectionColor = "transparent";
+    canvas.selectionBorderColor = "transparent";
+    canvas.selectionLineWidth = 0;
+    
+    // Override renderSelection to do nothing - prevents Fabric from drawing selection box
+    const originalRenderSelection = canvas.renderSelection;
+    canvas.renderSelection = () => {
+      // Do nothing - we render our own selection overlay
+    };
+    
+    // Also override _renderSelection (private method) if it exists
+    if ((canvas as any)._renderSelection) {
+      (canvas as any)._renderSelection = () => {
+        // Do nothing
+      };
+    }
+    
+    // Prevent selection rendering on every renderAll
+    const originalRenderAll = canvas.renderAll.bind(canvas);
+    canvas.renderAll = function(...args: any[]) {
+      const result = originalRenderAll(...args);
+      // Ensure selection is not rendered even if something tries to render it
+      if (this.selection) {
+        this.selection = false;
+      }
+      return result;
+    };
 
-    FabricObject.prototype.hasBorders = true;
-    FabricObject.prototype.hasControls = true;
-    FabricObject.prototype.transparentCorners = false;
-    FabricObject.prototype.cornerColor = "#6366f1";
-    FabricObject.prototype.cornerStyle = "rect";
-    FabricObject.prototype.cornerSize = 8;
-    FabricObject.prototype.borderColor = "#6366f1";
-    FabricObject.prototype.padding = 4;
+    FabricObject.prototype.hasBorders = false;
+    FabricObject.prototype.hasControls = false;
+    FabricObject.prototype.padding = 0;
     FabricObject.prototype.selectable = true;
     FabricObject.prototype.evented = true;
 
     // Grid is drawn on the container via CSS so shapes always render on top
-
-    // Selection events - show properties when object selected
-    canvas.on("selection:created", (e) => {
-      const obj = e.selected?.[0];
-      if (obj) {
-        setSelectedObject(obj);
-        setShowProperties(true);
-        updatePropertiesFromObject(obj);
-      }
-    });
-
-    canvas.on("selection:updated", (e) => {
-      const obj = e.selected?.[0];
-      if (obj) {
-        setSelectedObject(obj);
-        updatePropertiesFromObject(obj);
-      }
-    });
-
-    canvas.on("selection:cleared", () => {
-      setSelectedObject(null);
-      setObjectLabel("");
-    });
-
-    // Update connectors when objects move
-    canvas.on("object:moving", (e) => {
-      updateConnectedLines(canvas, e.target);
-    });
 
     const handleResize = () => {
       canvas.setDimensions({
@@ -385,6 +450,70 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
     };
   }, [markChanged]);
 
+  // Selection events and toolbar positioning (separate from canvas init so updateToolbarPosition is available)
+  useEffect(() => {
+    if (!fabricCanvas) return;
+
+    const handleSelectionCreated = (e: any) => {
+      const obj = e.selected?.[0];
+      if (obj) {
+        setSelectedObject(obj);
+        setShowProperties(true);
+        updatePropertiesFromObject(obj);
+        updateSelectionOverlays(obj);
+      }
+    };
+
+    const handleSelectionUpdated = (e: any) => {
+      const obj = e.selected?.[0];
+      if (obj) {
+        setSelectedObject(obj);
+        updatePropertiesFromObject(obj);
+        updateSelectionOverlays(obj);
+      }
+    };
+
+    const handleSelectionCleared = () => {
+      setSelectedObject(null);
+      setToolbarPosition(null);
+      setSelectionOverlay(null);
+      setObjectLabel("");
+    };
+
+    const handleObjectMoving = (e: any) => {
+      updateConnectedLines(fabricCanvas, e.target);
+      if (e.target === fabricCanvas.getActiveObject()) {
+        updateSelectionOverlays(e.target);
+      }
+    };
+
+    fabricCanvas.on("selection:created", handleSelectionCreated);
+    fabricCanvas.on("selection:updated", handleSelectionUpdated);
+    fabricCanvas.on("selection:cleared", handleSelectionCleared);
+    fabricCanvas.on("object:moving", handleObjectMoving);
+
+    return () => {
+      fabricCanvas.off("selection:created", handleSelectionCreated);
+      fabricCanvas.off("selection:updated", handleSelectionUpdated);
+      fabricCanvas.off("selection:cleared", handleSelectionCleared);
+      fabricCanvas.off("object:moving", handleObjectMoving);
+    };
+  }, [fabricCanvas, updateSelectionOverlays, updateConnectedLines]);
+
+  // Update toolbar position when canvas is scrolled/zoomed
+  useEffect(() => {
+    if (!fabricCanvas || !selectedObject) return;
+    const handleAfterRender = () => {
+      if (selectedObject === fabricCanvas.getActiveObject()) {
+        updateSelectionOverlays(selectedObject);
+      }
+    };
+    fabricCanvas.on("after:render", handleAfterRender);
+    return () => {
+      fabricCanvas.off("after:render", handleAfterRender);
+    };
+  }, [fabricCanvas, selectedObject, updateSelectionOverlays]);
+
   // Smart guides hook
   useSmartGuides({ fabricCanvas, enabled: smartGuidesEnabled, snapThreshold: 10 });
 
@@ -414,29 +543,6 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       }
     }
   };
-
-  // Update connected lines when object moves
-  const updateConnectedLines = useCallback((canvas: FabricCanvas, target: FabricObject | undefined) => {
-    if (!target) return;
-    const targetId = (target as any).shapeId;
-    
-    canvas.getObjects().forEach((obj) => {
-      if ((obj as any).isConnector && obj instanceof Path) {
-        const startId = (obj as any).startObjectId;
-        const endId = (obj as any).endObjectId;
-        
-        if (startId === targetId || endId === targetId) {
-          const startObj = canvas.getObjects().find((o) => (o as any).shapeId === startId);
-          const endObj = canvas.getObjects().find((o) => (o as any).shapeId === endId);
-          
-          if (startObj && endObj) {
-            updateConnectorPath(obj, startObj, endObj);
-          }
-        }
-      }
-    });
-    canvas.renderAll();
-  }, []);
 
   // Load existing diagram
   useEffect(() => {
@@ -638,8 +744,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           top,
           layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
         });
-        // So the selection outline (rectangle with handles) wraps the icon and label with a small margin
-        (group as any).padding = 6;
+        // No padding so selection box tightly wraps the icon and label (like Creately)
+        (group as any).padding = 0;
         (group as any).setCoords?.();
 
         (group as any).shapeId = shapeId;
@@ -1367,6 +1473,50 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
     toast.success("Duplicated");
   }, [fabricCanvas, selectedObject, findEmptyPosition]);
 
+  // Add text to selected shape or create text
+  const addTextToSelection = useCallback(() => {
+    if (!fabricCanvas || !selectedObject) return;
+    setActiveTool("text");
+    const bounds = selectedObject.getBoundingRect();
+    const textbox = new Textbox("Text", {
+      left: bounds.left + bounds.width / 2,
+      top: bounds.top + bounds.height / 2,
+      fontSize: 14,
+      fill: "#1a1a1a",
+      fontFamily: "Inter, sans-serif",
+      originX: "center",
+      originY: "center",
+      width: 100,
+    });
+    (textbox as any).shapeId = `text_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
+    fabricCanvas.add(textbox);
+    fabricCanvas.setActiveObject(textbox);
+    fabricCanvas.renderAll();
+    setTimeout(() => {
+      textbox.enterEditing();
+    }, 100);
+  }, [fabricCanvas, selectedObject]);
+
+  // Add shape near selection
+  const addShapeNearSelection = useCallback(async () => {
+    if (!fabricCanvas || !selectedObject) return;
+    const bounds = selectedObject.getBoundingRect();
+    const pos = findEmptyPosition(120, 80, bounds.left + bounds.width + 20, bounds.top);
+    const shape = await createShape("rect", fillColor, pos.left, pos.top, "Shape");
+    fabricCanvas.setActiveObject(shape);
+    fabricCanvas.renderAll();
+  }, [fabricCanvas, selectedObject, findEmptyPosition, createShape, fillColor]);
+
+  // Toggle comment panel
+  const toggleCommentPanel = useCallback(() => {
+    setShowComments(!showComments);
+  }, [showComments]);
+
+  // Open style options (placeholder - could open properties panel)
+  const openStyleOptions = useCallback(() => {
+    setShowProperties(true);
+  }, []);
+
   // Keyboard shortcuts
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -2021,24 +2171,6 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           </div>
         </div>
 
-        {/* Selection toolbar: appears when a shape on canvas is selected */}
-        {selectedObject && !(selectedObject as any).isConnector && !mermaidContent && (
-          <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-background/95">
-            <span className="text-[10px] lg:text-xs text-muted-foreground mr-2">Selection</span>
-            <Button
-              type="button"
-              variant="outline"
-              size="sm"
-              className="h-7 lg:h-8 text-xs"
-              onClick={startConnectorFromSelection}
-              title="Connect to another shape"
-            >
-              <Link2 className="w-3.5 h-3.5 lg:w-4 lg:h-4 mr-1.5" />
-              Connector
-            </Button>
-          </div>
-        )}
-
         {/* Canvas with fabric-style background; diagram can sit on top (e.g. white bg shape) */}
         <div
           ref={containerRef}
@@ -2061,7 +2193,196 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
               className="absolute inset-0 overflow-auto flex items-center justify-center p-8 bg-background/95"
             />
           ) : (
-            <canvas ref={canvasRef} className="absolute inset-0" tabIndex={0} />
+            <>
+              <canvas ref={canvasRef} className="absolute inset-0" tabIndex={0} />
+
+              {/* Creately-style selection overlay (dashed border + handles matching Creately exactly) */}
+              {selectionOverlay && selectedObject && !(selectedObject as any).isConnector && (
+                <div
+                  className="absolute z-40 pointer-events-none"
+                  style={{
+                    left: `${selectionOverlay.left}px`,
+                    top: `${selectionOverlay.top}px`,
+                    width: `${selectionOverlay.width}px`,
+                    height: `${selectionOverlay.height}px`,
+                  }}
+                >
+                  {/* Dashed border matching Creately's light blue dashed outline */}
+                  <div 
+                    className="absolute inset-0"
+                    style={{
+                      border: "1px dashed #60a5fa",
+                      borderRadius: "4px",
+                    }}
+                  />
+
+                  {/* Handles (4 corners + 4 mid-edges) - matching Creately's hollow square handles */}
+                  {[
+                    { k: "tl", l: 0, t: 0, tx: -4, ty: -4 },
+                    { k: "tr", l: "100%", t: 0, tx: -4, ty: -4 },
+                    { k: "bl", l: 0, t: "100%", tx: -4, ty: -4 },
+                    { k: "br", l: "100%", t: "100%", tx: -4, ty: -4 },
+                    { k: "tm", l: "50%", t: 0, tx: -4, ty: -4 },
+                    { k: "bm", l: "50%", t: "100%", tx: -4, ty: -4 },
+                    { k: "ml", l: 0, t: "50%", tx: -4, ty: -4 },
+                    { k: "mr", l: "100%", t: "50%", tx: -4, ty: -4 },
+                  ].map((p) => (
+                    <div
+                      key={p.k}
+                      className="absolute bg-white border border-[#60a5fa] rounded-sm"
+                      style={{
+                        width: 8,
+                        height: 8,
+                        left: typeof p.l === "number" ? `${p.l}px` : p.l,
+                        top: typeof p.t === "number" ? `${p.t}px` : p.t,
+                        transform: `translate(${p.tx}px, ${p.ty}px)`,
+                      }}
+                    />
+                  ))}
+                </div>
+              )}
+
+              {/* Floating toolbar anchored to selection (Creately-style - exact match) */}
+              {toolbarPosition && selectedObject && !(selectedObject as any).isConnector && (
+                <div
+                  className="absolute z-50 flex items-center gap-0.5 px-1.5 py-1 bg-gray-100 border border-gray-300 rounded-md shadow-md"
+                  style={{
+                    left: `${toolbarPosition.x}px`,
+                    top: `${toolbarPosition.y}px`,
+                    // No transform - positioned directly at coordinates (matching Creately)
+                  }}
+                >
+                  {/* 1. Duplicate (overlapping squares with plus) */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 hover:bg-gray-200 rounded"
+                    onClick={duplicateSelected}
+                    title="Duplicate"
+                  >
+                    <CopyIcon className="w-4 h-4 text-gray-700" />
+                  </Button>
+
+                  {/* 2. Text (T) */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 hover:bg-gray-200 rounded"
+                    onClick={addTextToSelection}
+                    title="Add Text"
+                  >
+                    <Type className="w-4 h-4 text-gray-700" />
+                  </Button>
+
+                  {/* 3. Pen tool */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 hover:bg-gray-200 rounded"
+                    onClick={() => setActiveTool("pen")}
+                    title="Pen Tool"
+                  >
+                    <PenToolIcon className="w-4 h-4 text-gray-700" />
+                  </Button>
+
+                  {/* 4. Add shape (square with plus) */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 hover:bg-gray-200 rounded"
+                    onClick={addShapeNearSelection}
+                    title="Add Shape"
+                  >
+                    <Plus className="w-4 h-4 text-gray-700" />
+                  </Button>
+
+                  {/* 5. Emoji (smiley) */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 hover:bg-gray-200 rounded"
+                    onClick={() => toast.info("Emoji feature coming soon")}
+                    title="Emoji"
+                  >
+                    <Smile className="w-4 h-4 text-gray-700" />
+                  </Button>
+
+                  {/* 6. Comment/document bubble */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 hover:bg-gray-200 rounded"
+                    onClick={toggleCommentPanel}
+                    title="Comment"
+                  >
+                    <CommentIcon className="w-4 h-4 text-gray-700" />
+                  </Button>
+
+                  {/* 7. Link (chain) */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 hover:bg-gray-200 rounded"
+                    onClick={startConnectorFromSelection}
+                    title="Link"
+                  >
+                    <Link2 className="w-4 h-4 text-gray-700" />
+                  </Button>
+
+                  {/* 8. Style/sparkle */}
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    className="h-7 w-7 p-0 hover:bg-gray-200 rounded"
+                    onClick={openStyleOptions}
+                    title="Style"
+                  >
+                    <Sparkles className="w-4 h-4 text-gray-700" />
+                  </Button>
+
+                  {/* 9. More options (...) */}
+                  <DropdownMenu>
+                    <DropdownMenuTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="ghost"
+                        size="sm"
+                        className="h-7 w-7 p-0 hover:bg-gray-200 rounded"
+                        title="More Options"
+                      >
+                        <MoreVertical className="w-4 h-4 text-gray-700" />
+                      </Button>
+                    </DropdownMenuTrigger>
+                    <DropdownMenuContent align="end" className="w-48">
+                      <DropdownMenuItem onClick={groupSelected}>
+                        <Group className="w-4 h-4 mr-2" />
+                        Group
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={ungroupSelected}>
+                        <Ungroup className="w-4 h-4 mr-2" />
+                        Ungroup
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={() => setShowProperties(true)}>
+                        <Settings className="w-4 h-4 mr-2" />
+                        Properties
+                      </DropdownMenuItem>
+                      <DropdownMenuItem onClick={deleteSelected} className="text-destructive">
+                        <Trash2 className="w-4 h-4 mr-2" />
+                        Delete
+                      </DropdownMenuItem>
+                    </DropdownMenuContent>
+                  </DropdownMenu>
+                </div>
+              )}
+            </>
           )}
         </div>
       </div>
