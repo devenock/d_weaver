@@ -265,18 +265,17 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       preserveObjectStacking: true,
     });
 
-    // Customize selection styling
-    canvas.selectionColor = "rgba(99, 102, 241, 0.12)";
-    canvas.selectionBorderColor = "#6366f1";
-    canvas.selectionLineWidth = 2;
+    // Selection: no rectangle wrapper — selected shapes appear exactly as they are
+    canvas.selection = true;
+    canvas.selectionColor = "transparent";
+    canvas.selectionBorderColor = "transparent";
+    canvas.selectionLineWidth = 0;
 
-    FabricObject.prototype.transparentCorners = false;
-    FabricObject.prototype.cornerColor = "#6366f1";
-    FabricObject.prototype.cornerStyle = "circle";
-    FabricObject.prototype.cornerSize = 8;
-    FabricObject.prototype.borderColor = "#6366f1";
-    FabricObject.prototype.borderScaleFactor = 2;
-    FabricObject.prototype.padding = 4;
+    FabricObject.prototype.hasBorders = false;
+    FabricObject.prototype.hasControls = false;
+    FabricObject.prototype.transparentCorners = true;
+    FabricObject.prototype.selectable = true;
+    FabricObject.prototype.evented = true;
 
     // Grid is drawn on the container via CSS so shapes always render on top
 
@@ -450,9 +449,9 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           setMermaidContent(null);
           if (canvasData.objects) {
             await fabricCanvas.loadFromJSON(canvasData, async () => {
-              // Restore images in groups after loading
               const objects = fabricCanvas.getObjects();
               for (const obj of objects) {
+                (obj as any).set({ hasBorders: false, hasControls: false });
                 if (obj.type === 'group') {
                   const group = obj as FabricGroup;
                   const groupObjects = group.getObjects();
@@ -2082,14 +2081,15 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           </div>
         )}
 
-        {/* Canvas or Mermaid preview - grid via CSS so shapes sit on top */}
+        {/* Canvas with fabric-style background; diagram can sit on top (e.g. white bg shape) */}
         <div
           ref={containerRef}
-          className="flex-1 relative min-h-0 bg-[#f8fafc]"
+          className="flex-1 relative min-h-0"
           style={{
+            backgroundColor: "#ebe8e4",
             backgroundImage: `
-              linear-gradient(to right, #e2e8f0 0.5px, transparent 0.5px),
-              linear-gradient(to bottom, #e2e8f0 0.5px, transparent 0.5px)
+              linear-gradient(to right, #d4cfc9 0.5px, transparent 0.5px),
+              linear-gradient(to bottom, #d4cfc9 0.5px, transparent 0.5px)
             `,
             backgroundSize: "20px 20px",
           }}
