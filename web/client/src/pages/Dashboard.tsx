@@ -9,6 +9,7 @@ import { DashboardContent } from "@/components/dashboard/DashboardContent";
 import { DashboardBreadcrumb } from "@/components/dashboard/DashboardBreadcrumb";
 import { EmbeddedEditor } from "@/components/dashboard/EmbeddedEditor";
 import { EmbeddedWhiteboard } from "@/components/dashboard/EmbeddedWhiteboard";
+import { EditorErrorBoundary } from "@/components/dashboard/EditorErrorBoundary";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
 import { listDiagrams, createDiagram } from "@/lib/diagram-api";
 import type { DiagramResponse } from "@/lib/api-types";
@@ -303,15 +304,16 @@ const Dashboard = () => {
           )}
 
           {viewMode === "editor" && (
-            <EmbeddedEditor
-              key={selectedDiagramId || "new-diagram"}
-              diagramId={selectedDiagramId}
-              user={user}
-              onClose={handleCloseEditor}
-              onSave={loadDiagrams}
-              workspaceId={currentWorkspace?.id}
-              onRequestNew={handleNewDiagram}
-            />
+            <EditorErrorBoundary>
+              <EmbeddedEditor
+                diagramId={selectedDiagramId}
+                user={user}
+                onClose={handleCloseEditor}
+                onSave={loadDiagrams}
+                workspaceId={currentWorkspace?.id}
+                onRequestNew={handleNewDiagram}
+              />
+            </EditorErrorBoundary>
           )}
 
           {viewMode === "whiteboard" && (

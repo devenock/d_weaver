@@ -321,162 +321,226 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   // Mermaid diagram (when content is mermaid code, not Fabric JSON)
   const [mermaidContent, setMermaidContent] = useState<string | null>(null);
 
-  // Reset state when diagramId changes to a different diagram (but don't clear canvas here - let loadDiagram handle it)
+  // Reset state when diagramId changes to a different diagram
   useEffect(() => {
     // Only reset if diagramId changed and it's not the same as currentDiagramId
     // This prevents resetting when loading the same diagram
-    if (diagramId !== currentDiagramId && diagramId !== null) {
-      // Clear mermaid state
+    if (diagramId !== currentDiagramId) {
+      // Clear mermaid state immediately - React will handle DOM cleanup automatically
       setMermaidContent(null);
       setMermaidSvg(null);
       setMermaidError(null);
+      mermaidCancelRef.current = true;
       
-      // Reset title (will be set by loadDiagram)
-      setDiagramTitle("Untitled Diagram");
-      setHasUnsavedChanges(false);
-    } else if (diagramId === null && currentDiagramId !== null) {
-      // Switching to new diagram (diagramId is null)
-      setMermaidContent(null);
-      setMermaidSvg(null);
-      setMermaidError(null);
-      setDiagramTitle("Untitled Diagram");
-      setHasUnsavedChanges(false);
-      setCurrentDiagramId(null);
-      // Clear canvas for new diagram
-      if (fabricCanvas) {
-        fabricCanvas.clear();
-        fabricCanvas.renderAll();
+      if (diagramId === null) {
+        // Switching to new diagram (diagramId is null)
+        setDiagramTitle("Untitled Diagram");
+        setHasUnsavedChanges(false);
+        setCurrentDiagramId(null);
+        // Clear canvas for new diagram safely
+        if (fabricCanvas && canvasRef.current) {
+          try {
+            fabricCanvas.clear();
+            fabricCanvas.renderAll();
+          } catch (e) {
+            console.warn("Error clearing canvas:", e);
+          }
+        }
+      } else {
+        // Switching to a different diagram - reset title (will be set by loadDiagram)
+        setDiagramTitle("Untitled Diagram");
+        setHasUnsavedChanges(false);
       }
     }
-  }, [diagramId, currentDiagramId]);
+  }, [diagramId, currentDiagramId, fabricCanvas]);
 
   // Track changes
   const markChanged = useCallback(() => {
     setHasUnsavedChanges(true);
   }, []);
 
-  // Initialize canvas
+  // Track if component is mounted to prevent operations after unmount
+  const isMountedRef = useRef(true);
+  const resizeHandlerRef = useRef<(() => void) | null>(null);
+  // Initialize canvas once and reuse it across diagram switches.
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
-    if (fabricCanvasRef.current) return;
 
-    const container = containerRef.current;
-    const canvas = new FabricCanvas(canvasRef.current, {
-      width: container.clientWidth,
-      height: container.clientHeight,
-      backgroundColor: "transparent",
-      selection: true,
-      preserveObjectStacking: true,
-    });
-
-    // Completely disable Fabric's selection UI - override rendering to prevent any selection box
-    canvas.selection = false;
-    canvas.selectionColor = "transparent";
-    canvas.selectionBorderColor = "transparent";
-    canvas.selectionLineWidth = 0;
-    
-    // Override renderSelection to do nothing - prevents Fabric from drawing selection box
-    const originalRenderSelection = canvas.renderSelection;
-    canvas.renderSelection = () => {
-      // Do nothing - we render our own selection overlay
-    };
-    
-    // Also override _renderSelection (private method) if it exists
-    if ((canvas as any)._renderSelection) {
-      (canvas as any)._renderSelection = () => {
-        // Do nothing
-      };
+    // If we already have a Fabric instance, reuse it.
+    if (fabricCanvasRef.current) {
+      setFabricCanvas(fabricCanvasRef.current);
+      return;
     }
-    
-    // Prevent selection rendering on every renderAll
-    const originalRenderAll = canvas.renderAll.bind(canvas);
-    canvas.renderAll = function(...args: any[]) {
-      const result = originalRenderAll(...args);
-      // Ensure selection is not rendered even if something tries to render it
-      if (this.selection) {
-        this.selection = false;
-      }
-      return result;
-    };
 
-    FabricObject.prototype.hasBorders = false;
-    FabricObject.prototype.hasControls = false;
-    FabricObject.prototype.padding = 0;
-    FabricObject.prototype.selectable = true;
-    FabricObject.prototype.evented = true;
+    isMountedRef.current = true;
+    const container = containerRef.current;
 
-    // Grid is drawn on the container via CSS so shapes always render on top
-
-    const handleResize = () => {
-      canvas.setDimensions({
+    let canvas: FabricCanvas;
+    try {
+      canvas = new FabricCanvas(canvasRef.current, {
         width: container.clientWidth,
         height: container.clientHeight,
+        backgroundColor: "transparent",
+        selection: true,
+        preserveObjectStacking: true,
       });
-      canvas.renderAll();
-    };
-
-    window.addEventListener("resize", handleResize);
-
-    // History tracking
-    const initialState = JSON.stringify(canvas.toJSON());
-    setHistory([initialState]);
-    setHistoryStep(0);
-    historyStepRef.current = 0;
-
-    const saveState = () => {
-      const json = JSON.stringify(canvas.toJSON());
-      setHistory((prev) => {
-        const newHistory = prev.slice(0, historyStepRef.current + 1);
-        newHistory.push(json);
-        historyStepRef.current = historyStepRef.current + 1;
-        return newHistory;
-      });
-      setHistoryStep(historyStepRef.current);
-      markChanged();
-    };
-
-    canvas.on("object:added", saveState);
-    canvas.on("object:modified", saveState);
-    canvas.on("object:removed", saveState);
-
-    // Double-click on a shape with a label: enter inline editing for the label
-    const handleDblClick = (e: any) => {
-      const target = e.target;
-      if (!target) return;
-      let textObj: Textbox | null = null;
-      if (target instanceof FabricGroup) {
-        const textChild = target.getObjects().find((o) => o instanceof Textbox);
-        textObj = textChild ? (textChild as Textbox) : null;
-      } else if (target instanceof Textbox) {
-        textObj = target;
-      }
-      if (textObj && typeof textObj.enterEditing === "function") {
-        textObj.enterEditing();
-        textObj.hiddenTextarea?.focus();
-      }
-    };
-    canvas.on("mouse:dblclick", handleDblClick);
+    } catch (error: any) {
+      console.error("Fabric initialization failed:", error);
+      return;
+    }
 
     fabricCanvasRef.current = canvas;
-    setFabricCanvas(canvas);
+    setupCanvas(canvas);
+    
+    function setupCanvas(canvas: FabricCanvas) {
+      if (!canvasRef.current || !containerRef.current) return;
+      const container = containerRef.current;
 
-    canvas.renderAll();
+      // Completely disable Fabric's selection UI - override rendering to prevent any selection box
+      canvas.selection = false;
+      canvas.selectionColor = "transparent";
+      canvas.selectionBorderColor = "transparent";
+      canvas.selectionLineWidth = 0;
+      
+      // Override renderSelection to do nothing - prevents Fabric from drawing selection box
+      const originalRenderSelection = canvas.renderSelection;
+      canvas.renderSelection = () => {
+        // Do nothing - we render our own selection overlay
+      };
+      
+      // Also override _renderSelection (private method) if it exists
+      if ((canvas as any)._renderSelection) {
+        (canvas as any)._renderSelection = () => {
+          // Do nothing
+        };
+      }
+      
+      // Prevent selection rendering on every renderAll
+      const originalRenderAll = canvas.renderAll.bind(canvas);
+      canvas.renderAll = function(...args: any[]) {
+        const result = originalRenderAll(...args);
+        // Ensure selection is not rendered even if something tries to render it
+        if (this.selection) {
+          this.selection = false;
+        }
+        return result;
+      };
 
-    setTimeout(() => {
-      container.focus();
+      FabricObject.prototype.hasBorders = false;
+      FabricObject.prototype.hasControls = false;
+      FabricObject.prototype.padding = 0;
+      FabricObject.prototype.selectable = true;
+      FabricObject.prototype.evented = true;
+
+      // Grid is drawn on the container via CSS so shapes always render on top
+
+      const handleResize = () => {
+        if (!isMountedRef.current || !canvas) return;
+        canvas.setDimensions({
+          width: container.clientWidth,
+          height: container.clientHeight,
+        });
+        canvas.renderAll();
+      };
+
+      window.addEventListener("resize", handleResize);
+      resizeHandlerRef.current = handleResize;
+
+      // History tracking
+      const initialState = JSON.stringify(canvas.toJSON());
+      setHistory([initialState]);
+      setHistoryStep(0);
+      historyStepRef.current = 0;
+
+      const saveState = () => {
+        if (!isMountedRef.current || !canvas) return;
+        const json = JSON.stringify(canvas.toJSON());
+        setHistory((prev) => {
+          const newHistory = prev.slice(0, historyStepRef.current + 1);
+          newHistory.push(json);
+          historyStepRef.current = historyStepRef.current + 1;
+          return newHistory;
+        });
+        setHistoryStep(historyStepRef.current);
+        markChanged();
+      };
+
+      canvas.on("object:added", saveState);
+      canvas.on("object:modified", saveState);
+      canvas.on("object:removed", saveState);
+
+      // Double-click on a shape with a label: enter inline editing for the label
+      const handleDblClick = (e: any) => {
+        const target = e.target;
+        if (!target) return;
+        let textObj: Textbox | null = null;
+        if (target instanceof FabricGroup) {
+          const textChild = target.getObjects().find((o) => o instanceof Textbox);
+          textObj = textChild ? (textChild as Textbox) : null;
+        } else if (target instanceof Textbox) {
+          textObj = target;
+        }
+        if (textObj && typeof textObj.enterEditing === "function") {
+          textObj.enterEditing();
+          textObj.hiddenTextarea?.focus();
+        }
+      };
+      canvas.on("mouse:dblclick", handleDblClick);
+
+      setFabricCanvas(canvas);
+
       canvas.renderAll();
-    }, 50);
+
+      setTimeout(() => {
+        if (containerRef.current && isMountedRef.current) {
+          containerRef.current.focus();
+        }
+        if (canvas && isMountedRef.current) {
+          canvas.renderAll();
+        }
+      }, 50);
+    }
 
     return () => {
-      window.removeEventListener("resize", handleResize);
-      canvas.off("object:added", saveState);
-      canvas.off("object:modified", saveState);
-      canvas.off("object:removed", saveState);
-      canvas.off("mouse:dblclick", handleDblClick);
-      canvas.dispose();
+      // Mark as unmounted immediately
+      isMountedRef.current = false;
+      
+      // Clean up resize listener
+      if (resizeHandlerRef.current) {
+        window.removeEventListener("resize", resizeHandlerRef.current);
+        resizeHandlerRef.current = null;
+      }
+      
+      // Clean up canvas if it exists
+      const canvasToCleanup = fabricCanvasRef.current;
+      if (canvasToCleanup) {
+        try {
+          // Remove all event listeners
+          canvasToCleanup.off();
+          // Clear objects
+          canvasToCleanup.clear();
+        } catch (e) {
+          // Canvas might already be cleaned up
+        }
+      }
+      
+      // Remove Fabric's reference from the canvas element
+      if (canvasRef.current) {
+        try {
+          delete (canvasRef.current as any).__canvas;
+          delete (canvasRef.current as any).fabric;
+        } catch (e) {
+          // Ignore
+        }
+      }
+      
+      // Clear refs immediately to prevent any further access
       fabricCanvasRef.current = null;
+      setFabricCanvas(null);
     };
-  }, [markChanged]);
+    // Depend on diagramId - when it changes, React remounts canvas (via key prop) and this effect re-runs
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
 
   // Selection events and toolbar positioning (separate from canvas init so updateToolbarPosition is available)
   useEffect(() => {
@@ -700,49 +764,69 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   // Render mermaid when content is mermaid code
   const [mermaidSvg, setMermaidSvg] = useState<string | null>(null);
   const [mermaidError, setMermaidError] = useState<string | null>(null);
+  const mermaidContainerRef = useRef<HTMLDivElement | null>(null);
+  const mermaidRenderIdRef = useRef<string | null>(null);
+  const mermaidCancelRef = useRef<boolean>(false);
 
   useEffect(() => {
+    // Cancel any pending renders
+    mermaidCancelRef.current = true;
+    
     if (!mermaidContent) {
       setMermaidSvg(null);
       setMermaidError(null);
+      mermaidRenderIdRef.current = null;
+      mermaidCancelRef.current = false;
       return;
     }
 
-    let cancelled = false;
+    // Reset cancel flag for new render
+    mermaidCancelRef.current = false;
     const id = `mermaid-editor-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
+    mermaidRenderIdRef.current = id;
     
     // Initialize mermaid
-    mermaid.initialize({ 
-      startOnLoad: false, 
-      securityLevel: "loose",
-      theme: "base",
-      themeVariables: {
-        primaryColor: "#6366f1",
-        primaryTextColor: "#fff",
-        primaryBorderColor: "#4f46e5",
-        lineColor: "#64748b",
-        background: "#f8fafc",
-      },
-    });
+    try {
+      mermaid.initialize({ 
+        startOnLoad: false, 
+        securityLevel: "loose",
+        theme: "base",
+        themeVariables: {
+          primaryColor: "#6366f1",
+          primaryTextColor: "#fff",
+          primaryBorderColor: "#4f46e5",
+          lineColor: "#64748b",
+          background: "#f8fafc",
+        },
+      });
+    } catch (e) {
+      // Already initialized, continue
+    }
 
     mermaid
       .render(id, mermaidContent)
       .then(({ svg }) => {
-        if (!cancelled) {
+        // Only update if this render is still current and not cancelled
+        if (!mermaidCancelRef.current && mermaidRenderIdRef.current === id) {
           setMermaidSvg(svg);
           setMermaidError(null);
         }
       })
       .catch((err) => {
         console.error("Mermaid render error:", err);
-        if (!cancelled) {
+        // Only update error if this render is still current and not cancelled
+        if (!mermaidCancelRef.current && mermaidRenderIdRef.current === id) {
           setMermaidError("Could not render diagram. The content may be invalid Mermaid syntax.");
           setMermaidSvg(null);
         }
       });
 
     return () => {
-      cancelled = true;
+      // Mark as cancelled and clear state - React will handle DOM cleanup
+      mermaidCancelRef.current = true;
+      setMermaidSvg(null);
+      setMermaidError(null);
+      mermaidRenderIdRef.current = null;
     };
   }, [mermaidContent]);
 
@@ -2290,12 +2374,21 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           onDrop={handleDrop}
           tabIndex={0}
         >
-          {mermaidContent ? (
-            <div className="absolute inset-0 overflow-auto flex items-center justify-center p-8 bg-background/95">
+          <canvas
+            ref={canvasRef}
+            className={`absolute inset-0 ${mermaidContent ? "opacity-0 pointer-events-none" : ""}`}
+            tabIndex={0}
+          />
+
+          {mermaidContent && (
+            <div
+              ref={mermaidContainerRef}
+              className="absolute inset-0 overflow-auto flex items-center justify-center p-8 bg-background/95"
+            >
               {mermaidError ? (
                 <div className="p-4 text-sm text-muted-foreground">{mermaidError}</div>
               ) : mermaidSvg ? (
-                <div 
+                <div
                   className="bg-card rounded-xl border shadow-sm p-6 max-w-4xl mx-auto [&_svg]:max-w-full [&_svg]:h-auto"
                   dangerouslySetInnerHTML={{ __html: mermaidSvg }}
                 />
@@ -2303,12 +2396,10 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
                 <div className="p-4 text-sm text-muted-foreground animate-pulse">Rendering diagram...</div>
               )}
             </div>
-          ) : (
-            <>
-              <canvas ref={canvasRef} className="absolute inset-0" tabIndex={0} />
+          )}
 
-              {/* Creately-style selection overlay (dashed border + handles matching Creately exactly) */}
-              {selectionOverlay && selectedObject && !(selectedObject as any).isConnector && (
+          {/* Creately-style selection overlay (dashed border + handles matching Creately exactly) */}
+          {!mermaidContent && selectionOverlay && selectedObject && !(selectedObject as any).isConnector && (
                 <div
                   className="absolute z-40 pointer-events-none"
                   style={{
@@ -2351,10 +2442,10 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
                     />
                   ))}
                 </div>
-              )}
+          )}
 
-              {/* Floating toolbar anchored to selection (Creately-style - exact match) */}
-              {toolbarPosition && selectedObject && !(selectedObject as any).isConnector && (
+          {/* Floating toolbar anchored to selection (Creately-style - exact match) */}
+          {!mermaidContent && toolbarPosition && selectedObject && !(selectedObject as any).isConnector && (
                 <div
                   className="absolute z-50 flex items-center gap-0.5 px-1.5 py-1 bg-gray-100 border border-gray-300 rounded-md shadow-md"
                   style={{
@@ -2492,8 +2583,6 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-              )}
-            </>
           )}
         </div>
       </div>
