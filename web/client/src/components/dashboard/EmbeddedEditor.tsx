@@ -88,6 +88,8 @@ import { KeyboardShortcutsPanel } from "./editor/KeyboardShortcutsPanel";
 import { createFabricConnector, updateConnectorPath } from "./editor/CurvedConnector";
 import type { ConnectorStyle, ArrowStyle } from "./editor/CurvedConnector";
 import { createIconDataUrl } from "./editor/ShapeRenderer";
+import { PreservePositionLayoutStrategy } from "./editor/PreservePositionLayout";
+import { LayoutManager } from "fabric";
 import mermaid from "mermaid";
 
 interface EmbeddedEditorProps {
@@ -265,15 +267,20 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       preserveObjectStacking: true,
     });
 
-    // Selection: no rectangle wrapper — selected shapes appear exactly as they are
+    // Selection: dashed rectangle and handles wrap the shape (label and icon)
     canvas.selection = true;
-    canvas.selectionColor = "transparent";
-    canvas.selectionBorderColor = "transparent";
-    canvas.selectionLineWidth = 0;
+    canvas.selectionColor = "rgba(99, 102, 241, 0.08)";
+    canvas.selectionBorderColor = "#6366f1";
+    canvas.selectionLineWidth = 2;
 
-    FabricObject.prototype.hasBorders = false;
-    FabricObject.prototype.hasControls = false;
-    FabricObject.prototype.transparentCorners = true;
+    FabricObject.prototype.hasBorders = true;
+    FabricObject.prototype.hasControls = true;
+    FabricObject.prototype.transparentCorners = false;
+    FabricObject.prototype.cornerColor = "#6366f1";
+    FabricObject.prototype.cornerStyle = "rect";
+    FabricObject.prototype.cornerSize = 8;
+    FabricObject.prototype.borderColor = "#6366f1";
+    FabricObject.prototype.padding = 4;
     FabricObject.prototype.selectable = true;
     FabricObject.prototype.evented = true;
 
@@ -451,28 +458,6 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
             await fabricCanvas.loadFromJSON(canvasData, async () => {
               const objects = fabricCanvas.getObjects();
               for (const obj of objects) {
-                (obj as any).set({ hasBorders: false, hasControls: false });
-                if (obj.type === "group") {
-                  const grp = obj as FabricGroup;
-                  grp.setCoords();
-                  const ox = (grp as any).originX ?? "left";
-                  const oy = (grp as any).originY ?? "top";
-                  if (ox !== "center" || oy !== "center") {
-                    const w = (grp as any).width ?? 120;
-                    const h = (grp as any).height ?? 80;
-                    const currentLeft = grp.left ?? 0;
-                    const currentTop = grp.top ?? 0;
-                    const topLeftX = ox === "center" ? currentLeft - w / 2 : ox === "right" ? currentLeft - w : currentLeft;
-                    const topLeftY = oy === "center" ? currentTop - h / 2 : oy === "bottom" ? currentTop - h : currentTop;
-                    grp.set({
-                      originX: "center",
-                      originY: "center",
-                      left: topLeftX + w / 2,
-                      top: topLeftY + h / 2,
-                    });
-                    grp.setCoords();
-                  }
-                }
                 if (obj.type === 'group') {
                   const group = obj as FabricGroup;
                   const groupObjects = group.getObjects();
@@ -590,21 +575,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
     [fabricCanvas]
   );
 
-  // Center group origin so the selection wrapper is centered on the shape (no misalignment)
-  const centerGroupOrigin = useCallback((group: FabricGroup, topLeftX: number, topLeftY: number) => {
-    group.setCoords();
-    const w = (group as any).width ?? 120;
-    const h = (group as any).height ?? 80;
-    group.set({
-      originX: "center",
-      originY: "center",
-      left: topLeftX + w / 2,
-      top: topLeftY + h / 2,
-    });
-    group.setCoords();
-  }, []);
-
-  // Create shape based on type - all shapes now grouped with text
+  // Create shape based on type - all shapes now grouped with text (group uses top-left origin so label/icon stay inside the shape)
   const createShape = useCallback(async (shapeType: ShapeType, color: string, left: number, top: number, label: string): Promise<FabricObject> => {
     const baseProps = {
       fill: color,
@@ -616,158 +587,68 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
     const shapeWidth = 120;
     const shapeHeight = 80;
 
-    // Check if this is an icon-based shape
+    // Icon-based shapes: no black rectangle — just icon and label, centered and stacked.
     if (ICON_SHAPE_TYPES.includes(shapeType)) {
-      // Create a rounded rectangle as background at group origin (0,0)
-      const bgRect = new Rect({
-        left: 0,
-        top: 0,
-        width: shapeWidth,
-        height: shapeHeight,
-        rx: 12,
-        ry: 12,
-        ...baseProps,
-      });
-
-      // Load the icon image
-      const iconDataUrl = createIconDataUrl(shapeType, '#ffffff', 40);
-      
+      const iconDataUrl = createIconDataUrl(shapeType, color, 40);
       if (!iconDataUrl) {
-        console.error(`Failed to create icon data URL for shape type: ${shapeType}`);
-        // Fallback to simple rect if icon creation fails
         const rect = new Rect({ left, top, width: shapeWidth, height: shapeHeight, rx: 12, ry: 12, ...baseProps });
         (rect as any).shapeId = shapeId;
         (rect as any).shapeType = shapeType;
         return rect;
       }
-      
       try {
-        // Load the image - FabricImage.fromURL returns a promise in newer versions
-        const img = await FabricImage.fromURL(iconDataUrl, {
-          crossOrigin: 'anonymous',
-        });
-        
-        // Scale the image first
+        const img = await FabricImage.fromURL(iconDataUrl, { crossOrigin: "anonymous" });
         img.scaleToWidth(32);
         img.scaleToHeight(32);
-        
-        // Wait for image to be fully loaded and scaled
-        await new Promise(resolve => setTimeout(resolve, 10));
-        
-        // Get the actual scaled dimensions
-        const scaledWidth = (img.width || 32) * (img.scaleX || 1);
-        const scaledHeight = (img.height || 32) * (img.scaleY || 1);
-        
-        // Position image at center of the shape
-        // In a FabricGroup, objects use coordinates relative to the group's top-left (0,0)
-        // The background rect is at (0,0) with width 120, height 80
-        // We want the icon centered horizontally and slightly above vertical center
-        const iconCenterX = shapeWidth / 2; // 60 (center of 120px width)
-        const iconCenterY = shapeHeight / 2 - 8; // 32 (slightly above center of 80px height)
-        
-        // Use left/top origin and calculate position manually to ensure accuracy
-        // Position = center - half of scaled dimension
-        const iconLeft = iconCenterX - (scaledWidth / 2);
-        const iconTop = iconCenterY - (scaledHeight / 2);
-        
+        await new Promise((r) => setTimeout(r, 10));
+        const scaledW = (img.width || 32) * (img.scaleX || 1);
+        const scaledH = (img.height || 32) * (img.scaleY || 1);
+        const centerX = shapeWidth / 2;
+        const iconY = 20;
+        const labelY = 20 + scaledH + 6;
         img.set({
-          left: iconLeft,
-          top: iconTop,
-          originX: 'left',
-          originY: 'top',
+          left: centerX - scaledW / 2,
+          top: iconY,
+          originX: "left",
+          originY: "top",
           selectable: false,
           evented: false,
           excludeFromExport: false,
         });
-        
-        // Ensure image is rendered and coordinates are updated
         img.setCoords();
-        
-        // Debug log
-        console.log('Icon positioned with left/top origin:', {
-          iconCenterX,
-          iconCenterY,
-          scaledWidth,
-          scaledHeight,
-          iconLeft,
-          iconTop,
-          imgLeft: img.left,
-          imgTop: img.top,
-        });
-        
-        // Verify image is loaded and has dimensions
-        if (!img.getElement || !img.getElement()) {
-          throw new Error('Image element not available');
-        }
+        if (!img.getElement?.()) throw new Error("Image element not available");
 
-        // Create label text centered in the shape
         const labelText = new Textbox(label, {
-          fontSize: 11,
-          fill: '#ffffff',
-          fontFamily: 'Inter, sans-serif',
-          fontWeight: 'bold',
-          originX: 'center',
-          originY: 'center',
-          textAlign: 'center',
-          width: shapeWidth - 10,
-          left: shapeWidth / 2,
-          top: shapeHeight / 2,
+          fontSize: 12,
+          fill: "#1a1a1a",
+          fontFamily: "Inter, sans-serif",
+          fontWeight: "bold",
+          originX: "center",
+          originY: "top",
+          textAlign: "center",
+          width: shapeWidth - 16,
+          left: centerX,
+          top: labelY,
           selectable: false,
           evented: false,
         });
 
-        // Group them together - order matters: background first, then image, then text
-        // All objects in the group use coordinates relative to the group's origin (0,0)
-        const group = new FabricGroup([bgRect, img, labelText], {
+        const group = new FabricGroup([img, labelText], {
           left,
           top,
+          layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
         });
-
-        // After grouping, verify and fix image position if needed
-        group.setCoords();
-        group.setCoords();
-        
-        // Get the image from the group and verify its position
-        const groupObjects = group.getObjects();
-        const imageInGroup = groupObjects.find(obj => obj.type === 'image') as FabricImage;
-        if (imageInGroup) {
-          // If the image position seems wrong, fix it
-          const expectedCenterX = shapeWidth / 2;
-          const expectedCenterY = shapeHeight / 2 - 8;
-          
-          // Check if position is way off (more than 10px difference)
-          if (Math.abs(imageInGroup.left - expectedCenterX) > 10 || 
-              Math.abs(imageInGroup.top - expectedCenterY) > 10) {
-            console.warn('Image position incorrect, fixing...', {
-              current: { left: imageInGroup.left, top: imageInGroup.top },
-              expected: { left: expectedCenterX, top: expectedCenterY },
-            });
-            
-            // Fix the position
-            imageInGroup.set({
-              left: expectedCenterX,
-              top: expectedCenterY,
-              originX: 'center',
-              originY: 'center',
-            });
-            
-            // Update the group
-            group.setCoords();
-            group.setCoords();
-          }
-        }
-
-        centerGroupOrigin(group, left, top);
+        // So the selection outline (rectangle with handles) wraps the icon and label with a small margin
+        (group as any).padding = 6;
+        (group as any).setCoords?.();
 
         (group as any).shapeId = shapeId;
         (group as any).shapeType = shapeType;
         (group as any).customLabel = label;
         (group as any).isIconShape = true;
-
         return group;
       } catch (error) {
-        console.error('Failed to create icon shape:', error);
-        // Fallback to simple rect if image fails
+        console.error("Failed to create icon shape:", error);
         const rect = new Rect({ left, top, width: shapeWidth, height: shapeHeight, rx: 12, ry: 12, ...baseProps });
         (rect as any).shapeId = shapeId;
         (rect as any).shapeType = shapeType;
@@ -802,8 +683,11 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
             top: 0,
           });
 
-          const group = new FabricGroup([shapeObj, labelText], { left, top });
-          centerGroupOrigin(group, left, top);
+          const group = new FabricGroup([shapeObj, labelText], {
+            left,
+            top,
+            layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
+          });
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -832,8 +716,11 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
             top: 60,
           });
 
-          const group = new FabricGroup([shapeObj, labelText], { left, top });
-          centerGroupOrigin(group, left, top);
+          const group = new FabricGroup([shapeObj, labelText], {
+            left,
+            top,
+            layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
+          });
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -863,8 +750,11 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
             top: 50,
           });
 
-          const group = new FabricGroup([shapeObj, labelText], { left, top });
-          centerGroupOrigin(group, left, top);
+          const group = new FabricGroup([shapeObj, labelText], {
+            left,
+            top,
+            layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
+          });
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -893,8 +783,11 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
             top: 50,
           });
 
-          const group = new FabricGroup([shapeObj, labelText], { left, top });
-          centerGroupOrigin(group, left, top);
+          const group = new FabricGroup([shapeObj, labelText], {
+            left,
+            top,
+            layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
+          });
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -923,8 +816,11 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
             top: 50,
           });
 
-          const group = new FabricGroup([shapeObj, labelText], { left, top });
-          centerGroupOrigin(group, left, top);
+          const group = new FabricGroup([shapeObj, labelText], {
+            left,
+            top,
+            layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
+          });
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -953,8 +849,11 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
             top: 50,
           });
 
-          const group = new FabricGroup([shapeObj, labelText], { left, top });
-          centerGroupOrigin(group, left, top);
+          const group = new FabricGroup([shapeObj, labelText], {
+            left,
+            top,
+            layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
+          });
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -984,8 +883,11 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
             top: 50,
           });
 
-          const group = new FabricGroup([shapeObj, labelText], { left, top });
-          centerGroupOrigin(group, left, top);
+          const group = new FabricGroup([shapeObj, labelText], {
+            left,
+            top,
+            layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
+          });
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -1015,8 +917,11 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
             top: 30,
           });
 
-          const group = new FabricGroup([shapeObj, labelText], { left, top });
-          centerGroupOrigin(group, left, top);
+          const group = new FabricGroup([shapeObj, labelText], {
+            left,
+            top,
+            layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
+          });
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -1040,8 +945,11 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
             top: 40,
           });
 
-          const group = new FabricGroup([shapeObj, labelText], { left, top });
-          centerGroupOrigin(group, left, top);
+          const group = new FabricGroup([shapeObj, labelText], {
+            left,
+            top,
+            layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
+          });
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -1066,8 +974,11 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
             top: 40,
           });
 
-          const group = new FabricGroup([shapeObj, labelText], { left, top });
-          centerGroupOrigin(group, left, top);
+          const group = new FabricGroup([shapeObj, labelText], {
+            left,
+            top,
+            layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
+          });
           (group as any).shapeId = shapeId;
           (group as any).shapeType = shapeType;
           (group as any).customLabel = label;
@@ -1076,7 +987,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         }
       }
     }
-  }, [centerGroupOrigin]);
+  }, []);
 
   // Add component with smart positioning
   const addComponent = useCallback(
@@ -2238,10 +2149,10 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
                 <Separator />
 
-                {/* Fill Color */}
-                {!(selectedObject as any).isConnector && (
+                {/* Background and border only for shapes that have a rect (basic shapes); icon shapes are icon + label only */}
+                {!(selectedObject as any).isConnector && !(selectedObject as any).isIconShape && (
                   <div>
-                    <Label className="text-[10px] lg:text-xs text-muted-foreground">Fill Color</Label>
+                    <Label className="text-[10px] lg:text-xs text-muted-foreground">Background color</Label>
                     <div className="mt-1.5 lg:mt-2 grid grid-cols-5 gap-1 lg:gap-1.5">
                       {PRESET_COLORS.map((color) => (
                         <button
@@ -2270,9 +2181,9 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
                   </div>
                 )}
 
-                {/* Stroke Color */}
+                {!(selectedObject as any).isIconShape && (
                 <div>
-                  <Label className="text-[10px] lg:text-xs text-muted-foreground">Stroke Color</Label>
+                  <Label className="text-[10px] lg:text-xs text-muted-foreground">Border color</Label>
                   <div className="mt-1.5 lg:mt-2 grid grid-cols-5 gap-1 lg:gap-1.5">
                     {PRESET_COLORS.map((color) => (
                       <button
@@ -2299,10 +2210,11 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
                     />
                   </div>
                 </div>
+                )}
 
-                {/* Stroke Width */}
+                {!(selectedObject as any).isIconShape && (
                 <div>
-                  <Label className="text-[10px] lg:text-xs text-muted-foreground">Stroke Width</Label>
+                  <Label className="text-[10px] lg:text-xs text-muted-foreground">Border width</Label>
                   <div className="mt-1.5 lg:mt-2 flex items-center gap-2 lg:gap-3">
                     <Slider
                       value={[strokeWidth]}
@@ -2315,6 +2227,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
                     <span className="text-xs lg:text-sm w-8 text-right">{strokeWidth}px</span>
                   </div>
                 </div>
+                )}
 
                 <Separator />
 
