@@ -11,11 +11,11 @@ import {
   SidebarMenu,
   SidebarMenuItem,
   SidebarMenuButton,
+  SidebarMenuAction,
   SidebarHeader,
   SidebarFooter,
   SidebarSeparator,
 } from "@/components/ui/sidebar";
-import { Button } from "@/components/ui/button";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Collapsible, CollapsibleContent, CollapsibleTrigger } from "@/components/ui/collapsible";
 import type { WorkspaceWithRole } from "@/hooks/useWorkspaces";
@@ -175,7 +175,6 @@ export function AppSidebar({
                             <SidebarMenuButton
                               isActive={currentWorkspace?.id === workspace.id}
                               onClick={() => onSelectWorkspace(workspace)}
-                              className="justify-between"
                             >
                               <div className="flex items-center gap-2">
                                 <div 
@@ -184,20 +183,17 @@ export function AppSidebar({
                                 />
                                 <span className="truncate">{workspace.name}</span>
                               </div>
-                              {currentWorkspace?.id === workspace.id && (
-                                <Button
-                                  variant="ghost"
-                                  size="icon"
-                                  className="h-5 w-5 opacity-0 group-hover:opacity-100"
-                                  onClick={(e) => {
-                                    e.stopPropagation();
-                                    setWorkspaceSettingsOpen(true);
-                                  }}
-                                >
-                                  <Settings className="h-3 w-3" />
-                                </Button>
-                              )}
                             </SidebarMenuButton>
+                            {currentWorkspace?.id === workspace.id && (
+                              <SidebarMenuAction
+                                onClick={(e) => {
+                                  e.stopPropagation();
+                                  setWorkspaceSettingsOpen(true);
+                                }}
+                              >
+                                <Settings className="h-3 w-3" />
+                              </SidebarMenuAction>
+                            )}
                           </SidebarMenuItem>
                         ))
                       )}
