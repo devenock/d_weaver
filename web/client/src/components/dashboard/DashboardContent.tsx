@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Download, Share2, Trash2, Eye, Edit, MoreHorizontal, Clock } from "lucide-react";
@@ -19,9 +19,10 @@ import {
 } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import type { DiagramResponse } from "@/lib/api-types";
-import { deleteDiagram, updateDiagram } from "@/lib/diagram-api";
+import { deleteDiagram, updateDiagram, getDiagram } from "@/lib/diagram-api";
 import { resolveImageUrl } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/api";
+import mermaid from "mermaid";
 
 interface DashboardContentProps {
   accessToken: string;
@@ -140,6 +141,102 @@ export function DashboardContent({
     );
   }
 
+  // Component to render diagram preview (image or mermaid fallback)
+  const DiagramPreview = ({ diagram }: { diagram: DiagramResponse }) => {
+    const [mermaidSvg, setMermaidSvg] = useState<string | null>(null);
+    const [isMermaid, setIsMermaid] = useState(false);
+    const [loading, setLoading] = useState(false);
+
+    useEffect(() => {
+      const checkAndRenderMermaid = async () => {
+        // Only check for mermaid if no image_url
+        if (resolveImageUrl(diagram.image_url)) {
+          setIsMermaid(false);
+          return;
+        }
+
+        // Try to get diagram content to check if it's mermaid
+        try {
+          const data = await getDiagram(accessToken, diagram.id);
+          const trimmed = String(data.content || "").trim();
+          const isMermaidCode = trimmed.length > 0 && (
+            trimmed.startsWith('graph ') ||
+            trimmed.startsWith('flowchart ') ||
+            trimmed.startsWith('sequenceDiagram') ||
+            trimmed.startsWith('erDiagram') ||
+            trimmed.startsWith('gantt') ||
+            trimmed.startsWith('stateDiagram') ||
+            trimmed.startsWith('C4Context') ||
+            trimmed.startsWith('mindmap') ||
+            trimmed.includes('-->') ||
+            trimmed.includes('->>') ||
+            (trimmed.includes('subgraph') && trimmed.includes('end'))
+          );
+
+          if (isMermaidCode) {
+            setIsMermaid(true);
+            setLoading(true);
+            try {
+              const renderId = `preview-${diagram.id}-${Math.random().toString(36).slice(2, 9)}`;
+              mermaid.initialize({
+                startOnLoad: false,
+                securityLevel: "loose",
+                theme: "base",
+                themeVariables: {
+                  primaryColor: "#6366f1",
+                  primaryTextColor: "#fff",
+                  primaryBorderColor: "#4f46e5",
+                  lineColor: "#64748b",
+                  background: "#f8fafc",
+                },
+              });
+              const { svg } = await mermaid.render(renderId, trimmed);
+              setMermaidSvg(svg);
+            } catch (err) {
+              console.error("Failed to render mermaid preview:", err);
+              setIsMermaid(false);
+            } finally {
+              setLoading(false);
+            }
+          } else {
+            setIsMermaid(false);
+          }
+        } catch (err) {
+          // If we can't load the diagram, just show "No preview"
+          setIsMermaid(false);
+        }
+      };
+
+      checkAndRenderMermaid();
+    }, [diagram.id, diagram.image_url, accessToken]);
+
+    if (resolveImageUrl(diagram.image_url)) {
+      return (
+        <img
+          src={resolveImageUrl(diagram.image_url)!}
+          alt={diagram.title}
+          className="max-w-full max-h-full object-contain"
+        />
+      );
+    }
+
+    if (isMermaid && mermaidSvg) {
+      return (
+        <div
+          className="w-full h-full flex items-center justify-center p-2 bg-[#f8fafc]"
+          dangerouslySetInnerHTML={{ __html: mermaidSvg }}
+          style={{ fontSize: '10px' }}
+        />
+      );
+    }
+
+    if (loading) {
+      return <p className="text-xs text-muted-foreground animate-pulse">Loading preview...</p>;
+    }
+
+    return <p className="text-xs text-muted-foreground">No preview</p>;
+  };
+
   const renderDiagramGrid = (diagramsToRender: DiagramResponse[]) => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {diagramsToRender.map((diagram) => (
@@ -201,15 +298,7 @@ export function DashboardContent({
               </CardHeader>
               <CardContent className="p-4 pt-0">
                 <div className="bg-muted rounded-md h-32 overflow-hidden flex items-center justify-center">
-                  {resolveImageUrl(diagram.image_url) ? (
-                    <img
-                      src={resolveImageUrl(diagram.image_url)!}
-                      alt={diagram.title}
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  ) : (
-                    <p className="text-xs text-muted-foreground">No preview</p>
-                  )}
+                  <DiagramPreview diagram={diagram} />
                 </div>
               </CardContent>
             </Card>

@@ -322,6 +322,31 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   const [mermaidContent, setMermaidContent] = useState<string | null>(null);
   const mermaidContainerRef = useRef<HTMLDivElement>(null);
 
+  // Reset state when diagramId changes to a different diagram
+  useEffect(() => {
+    // Only reset if diagramId changed and it's not the same as currentDiagramId
+    // This prevents resetting when loading the same diagram
+    if (diagramId !== currentDiagramId && diagramId !== null) {
+      setMermaidContent(null);
+      setDiagramTitle("Untitled Diagram");
+      setHasUnsavedChanges(false);
+      if (fabricCanvas) {
+        fabricCanvas.clear();
+        fabricCanvas.renderAll();
+      }
+    } else if (diagramId === null && currentDiagramId !== null) {
+      // Switching to new diagram (diagramId is null, but we had a previous diagram)
+      setMermaidContent(null);
+      setDiagramTitle("Untitled Diagram");
+      setHasUnsavedChanges(false);
+      setCurrentDiagramId(null);
+      if (fabricCanvas) {
+        fabricCanvas.clear();
+        fabricCanvas.renderAll();
+      }
+    }
+  }, [diagramId, currentDiagramId, fabricCanvas]);
+
   // Track changes
   const markChanged = useCallback(() => {
     setHasUnsavedChanges(true);
@@ -547,7 +572,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   // Load existing diagram
   useEffect(() => {
     const loadDiagram = async () => {
-      if (!diagramId || !fabricCanvas) return;
+      if (!diagramId) return;
       const token = getAccessToken();
       if (!token) return;
 
@@ -557,9 +582,127 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         setCurrentDiagramId(data.id);
         setHasUnsavedChanges(false);
 
+        // Check if content is mermaid code first (before trying to parse as JSON)
+        const trimmed = String(data.content || "").trim();
+        const isMermaidCode = trimmed.length > 0 && (
+          trimmed.startsWith('graph ') ||
+          trimmed.startsWith('flowchart ') ||
+          trimmed.startsWith('sequenceDiagram') ||
+          trimmed.startsWith('erDiagram') ||
+          trimmed.startsWith('gantt') ||
+          trimmed.startsWith('stateDiagram') ||
+          trimmed.startsWith('C4Context') ||
+          trimmed.startsWith('mindmap') ||
+          trimmed.includes('-->') ||
+          trimmed.includes('->>') ||
+          (trimmed.includes('subgraph') && trimmed.includes('end'))
+        );
+
+        if (isMermaidCode) {
+          // Content is mermaid code (e.g. from template or AI)
+          setMermaidContent(trimmed);
+        } else {
+          // Try to parse as Fabric canvas JSON
+          try {
+            const canvasData = JSON.parse(data.content);
+            setMermaidContent(null);
+            // Only load into canvas if fabricCanvas is ready
+            if (fabricCanvas && canvasData.objects) {
+              await fabricCanvas.loadFromJSON(canvasData, async () => {
+                const objects = fabricCanvas.getObjects();
+                for (const obj of objects) {
+                  if (obj.type === 'group') {
+                    const group = obj as FabricGroup;
+                    const groupObjects = group.getObjects();
+                    const updatedObjects: FabricObject[] = [];
+                      
+                    for (const childObj of groupObjects) {
+                      if (childObj.type === 'image') {
+                        const imgObj = childObj as any;
+                        if (imgObj.src && imgObj.src.startsWith('data:image')) {
+                          try {
+                            const img = await FabricImage.fromURL(imgObj.src);
+                            img.set({
+                              left: childObj.left || 0,
+                              top: childObj.top || 0,
+                              scaleX: childObj.scaleX || 1,
+                              scaleY: childObj.scaleY || 1,
+                              originX: childObj.originX || 'left',
+                              originY: childObj.originY || 'top',
+                              selectable: false,
+                              evented: false,
+                            });
+                            updatedObjects.push(img);
+                          } catch (err) {
+                            console.error('Failed to restore image:', err);
+                            updatedObjects.push(childObj);
+                          }
+                        } else {
+                          updatedObjects.push(childObj);
+                        }
+                      } else {
+                        updatedObjects.push(childObj);
+                      }
+                    }
+                      
+                    if (updatedObjects.length === groupObjects.length) {
+                      group.set('objects', updatedObjects);
+                    }
+                  }
+                }
+                fabricCanvas.renderAll();
+              });
+            } else if (!fabricCanvas) {
+              // Canvas not ready yet, but we have valid JSON - wait for canvas to initialize
+              // The canvas init effect will trigger this again when fabricCanvas becomes available
+            }
+          } catch (parseError) {
+            // Not valid JSON, treat as mermaid code if it has content
+            if (trimmed.length > 0) {
+              setMermaidContent(trimmed);
+            } else {
+              setMermaidContent(null);
+            }
+          }
+        }
+      } catch (err) {
+        toast.error(getApiErrorMessage(err, "Failed to load diagram"));
+      }
+    };
+
+    loadDiagram();
+  }, [diagramId, getAccessToken]);
+
+  // Load Fabric canvas content when fabricCanvas becomes available (for diagrams that were loaded before canvas was ready)
+  useEffect(() => {
+    const loadCanvasContent = async () => {
+      if (!diagramId || !fabricCanvas || mermaidContent !== null) return;
+      const token = getAccessToken();
+      if (!token) return;
+
+      try {
+        const data = await getDiagram(token, diagramId);
+        const trimmed = String(data.content || "").trim();
+        
+        // Skip if it's mermaid code
+        const isMermaidCode = trimmed.length > 0 && (
+          trimmed.startsWith('graph ') ||
+          trimmed.startsWith('flowchart ') ||
+          trimmed.startsWith('sequenceDiagram') ||
+          trimmed.startsWith('erDiagram') ||
+          trimmed.startsWith('gantt') ||
+          trimmed.startsWith('stateDiagram') ||
+          trimmed.startsWith('C4Context') ||
+          trimmed.startsWith('mindmap') ||
+          trimmed.includes('-->') ||
+          trimmed.includes('->>') ||
+          (trimmed.includes('subgraph') && trimmed.includes('end'))
+        );
+        
+        if (isMermaidCode) return;
+
         try {
           const canvasData = JSON.parse(data.content);
-          setMermaidContent(null);
           if (canvasData.objects) {
             await fabricCanvas.loadFromJSON(canvasData, async () => {
               const objects = fabricCanvas.getObjects();
@@ -606,20 +749,16 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
               fabricCanvas.renderAll();
             });
           }
-        } catch {
-          // Content is mermaid code (e.g. from template or AI)
-          const trimmed = String(data.content || "").trim();
-          if (trimmed.length > 0) {
-            setMermaidContent(trimmed);
-          }
+        } catch (parseError) {
+          // Not valid JSON, ignore
         }
       } catch (err) {
-        toast.error(getApiErrorMessage(err, "Failed to load diagram"));
+        // Ignore errors here - already handled in main loadDiagram effect
       }
     };
 
-    loadDiagram();
-  }, [diagramId, fabricCanvas, getAccessToken]);
+    loadCanvasContent();
+  }, [diagramId, fabricCanvas, mermaidContent, getAccessToken]);
 
   // Render mermaid when content is mermaid code
   useEffect(() => {
