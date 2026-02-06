@@ -71,6 +71,7 @@ import {
   History,
   Search,
   Keyboard,
+  Link2,
 } from "lucide-react";
 import { toast } from "sonner";
 import { useAuth } from "@/contexts/AuthContext";
@@ -226,7 +227,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   // Categories
   const [expandedCategories, setExpandedCategories] = useState<string[]>(["Basic Shapes", "Cloud & Infrastructure"]);
 
-  // Drag state
+  // Drag state (sidebar -> canvas)
   const [draggedShape, setDraggedShape] = useState<ShapePreset | null>(null);
 
   // Connector state
@@ -259,51 +260,27 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
     const canvas = new FabricCanvas(canvasRef.current, {
       width: container.clientWidth,
       height: container.clientHeight,
-      backgroundColor: "#f8fafc",
+      backgroundColor: "transparent",
       selection: true,
       preserveObjectStacking: true,
     });
 
-    // Customize selection styling - remove corner boxes, use solid border
-    canvas.selectionColor = 'rgba(99, 102, 241, 0.1)';
-    canvas.selectionBorderColor = '#6366f1';
+    // Customize selection styling
+    canvas.selectionColor = "rgba(99, 102, 241, 0.12)";
+    canvas.selectionBorderColor = "#6366f1";
     canvas.selectionLineWidth = 2;
 
-    // Set default object controls styling
     FabricObject.prototype.transparentCorners = false;
-    FabricObject.prototype.cornerColor = '#6366f1';
-    FabricObject.prototype.cornerStyle = 'circle';
+    FabricObject.prototype.cornerColor = "#6366f1";
+    FabricObject.prototype.cornerStyle = "circle";
     FabricObject.prototype.cornerSize = 8;
-    FabricObject.prototype.borderColor = '#6366f1';
+    FabricObject.prototype.borderColor = "#6366f1";
     FabricObject.prototype.borderScaleFactor = 2;
     FabricObject.prototype.padding = 4;
 
-    // Grid pattern
-    const gridSize = 20;
-    canvas.on("after:render", function () {
-      const ctx = canvas.getContext();
-      const width = canvas.getWidth();
-      const height = canvas.getHeight();
+    // Grid is drawn on the container via CSS so shapes always render on top
 
-      ctx.strokeStyle = "#e2e8f0";
-      ctx.lineWidth = 0.5;
-
-      for (let i = 0; i < width; i += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(i, 0);
-        ctx.lineTo(i, height);
-        ctx.stroke();
-      }
-
-      for (let i = 0; i < height; i += gridSize) {
-        ctx.beginPath();
-        ctx.moveTo(0, i);
-        ctx.lineTo(width, i);
-        ctx.stroke();
-      }
-    });
-
-    // Selection events - auto show properties panel
+    // Selection events - show properties when object selected
     canvas.on("selection:created", (e) => {
       const obj = e.selected?.[0];
       if (obj) {
@@ -317,7 +294,6 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       const obj = e.selected?.[0];
       if (obj) {
         setSelectedObject(obj);
-        setShowProperties(true);
         updatePropertiesFromObject(obj);
       }
     });
@@ -544,11 +520,15 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
     mermaid
       .render(id, mermaidContent)
       .then(({ svg }) => {
-        if (mermaidContainerRef.current) mermaidContainerRef.current.innerHTML = svg;
+        if (mermaidContainerRef.current) {
+          mermaidContainerRef.current.innerHTML = `<div class="bg-card rounded-xl border shadow-sm p-6 max-w-4xl mx-auto [&_svg]:max-w-full [&_svg]:h-auto">${svg}</div>`;
+        }
       })
       .catch((err) => {
         console.error("Mermaid render error:", err);
-        container.innerHTML = `<div class="p-4 text-sm text-muted-foreground">Could not render diagram. The content may be invalid Mermaid syntax.</div>`;
+        if (mermaidContainerRef.current) {
+          mermaidContainerRef.current.innerHTML = `<div class="p-4 text-sm text-muted-foreground">Could not render diagram. The content may be invalid Mermaid syntax.</div>`;
+        }
       });
   }, [mermaidContent]);
 
@@ -1064,6 +1044,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       const shape = await createShape(preset.id, preset.color, pos.left, pos.top, preset.label);
 
       fabricCanvas.add(shape);
+      fabricCanvas.bringObjectToFront(shape);
       fabricCanvas.setActiveObject(shape);
       fabricCanvas.renderAll();
 
@@ -1073,24 +1054,16 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
     [fabricCanvas, findEmptyPosition, createShape]
   );
 
-  // Handle drag start
+  // Drag from sidebar onto canvas
   const handleDragStart = (e: React.DragEvent, preset: ShapePreset) => {
     setDraggedShape(preset);
     e.dataTransfer.effectAllowed = "copy";
     e.dataTransfer.setData("text/plain", preset.id);
-    
     const dragIcon = document.createElement("div");
     dragIcon.style.cssText = `
-      width: 60px; height: 40px; 
-      background: ${preset.color}; 
-      border-radius: 8px; 
-      opacity: 0.9;
-      display: flex;
-      align-items: center;
-      justify-content: center;
-      color: white;
-      font-size: 10px;
-      font-weight: bold;
+      width: 60px; height: 40px; background: ${preset.color}; border-radius: 8px;
+      opacity: 0.9; display: flex; align-items: center; justify-content: center;
+      color: white; font-size: 10px; font-weight: bold;
     `;
     dragIcon.textContent = preset.label;
     document.body.appendChild(dragIcon);
@@ -1106,11 +1079,9 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (!draggedShape || !containerRef.current) return;
-
     const rect = containerRef.current.getBoundingClientRect();
     const x = e.clientX - rect.left - 60;
     const y = e.clientY - rect.top - 40;
-
     addComponent(draggedShape, { left: Math.max(0, x), top: Math.max(0, y) });
     setDraggedShape(null);
   };
@@ -1175,55 +1146,13 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
     };
   }, [fabricCanvas, activeTool, connectorStart, startConnector, completeConnector]);
 
-  // Auto-connect in select mode: click shape A then click shape B, or drag from A and release on B
-  useEffect(() => {
-    if (!fabricCanvas) return;
-    const connectDragStartRef = { current: null as FabricObject | null };
-
-    const handleMouseDown = (e: any) => {
-      if (activeTool !== "select") return;
-      const target = e.target;
-      if (!target || (target as any).isConnector) return;
-      const shapeId = (target as any).shapeId;
-      const src = connectDragStartRef.current;
-      if (shapeId) {
-        if (src && target !== src) {
-          createConnectorBetween(src, target);
-          connectDragStartRef.current = null;
-        } else if (!src) {
-          connectDragStartRef.current = target;
-          toast.info("Click another shape to connect, or drag to it and release");
-        }
-      } else {
-        connectDragStartRef.current = null;
-      }
-    };
-
-    const handleMouseUp = (e: any) => {
-      const src = connectDragStartRef.current;
-      if (src) {
-        const pointer = fabricCanvas.getPointer(e.e);
-        const found = fabricCanvas.getObjects().find(
-          (o) =>
-            o !== src &&
-            (o as any).shapeId &&
-            !(o as any).isConnector &&
-            o.containsPoint(pointer)
-        );
-        if (found) {
-          createConnectorBetween(src, found);
-        }
-      }
-      connectDragStartRef.current = null;
-    };
-
-    fabricCanvas.on("mouse:down", handleMouseDown);
-    fabricCanvas.on("mouse:up", handleMouseUp);
-    return () => {
-      fabricCanvas.off("mouse:down", handleMouseDown);
-      fabricCanvas.off("mouse:up", handleMouseUp);
-    };
-  }, [fabricCanvas, activeTool, createConnectorBetween]);
+  // Start connector from selection toolbar (no click-A-then-B in select mode)
+  const startConnectorFromSelection = useCallback(() => {
+    if (!selectedObject || (selectedObject as any).isConnector) return;
+    startConnector(selectedObject);
+    setActiveTool("connector");
+    toast.info("Click another shape to connect");
+  }, [selectedObject, startConnector]);
 
   // Sync label when user finishes editing the text inline (editing:exited)
   useEffect(() => {
@@ -1857,6 +1786,32 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
                 Layers
               </Button>
             </div>
+
+            <div className="mt-3 pt-3 border-t border-border">
+              <h3 className="text-[10px] lg:text-xs font-semibold text-muted-foreground uppercase tracking-wider mb-2">View</h3>
+              <div className="grid grid-cols-2 gap-1.5">
+                <Button
+                  variant={showProperties ? "secondary" : "ghost"}
+                  size="sm"
+                  className="justify-start gap-1.5 h-8 lg:h-9 text-xs"
+                  onClick={() => setShowProperties(!showProperties)}
+                  title="Properties"
+                >
+                  <Settings className="w-3.5 h-3.5" />
+                  Properties
+                </Button>
+                <Button
+                  variant={showHistory ? "secondary" : "ghost"}
+                  size="sm"
+                  className="justify-start gap-1.5 h-8 lg:h-9 text-xs"
+                  onClick={() => setShowHistory(!showHistory)}
+                  title="History"
+                >
+                  <History className="w-3.5 h-3.5" />
+                  History
+                </Button>
+              </div>
+            </div>
             
             {/* Group/Ungroup buttons */}
             <div className="grid grid-cols-2 gap-1.5 lg:gap-2 mt-2">
@@ -1968,8 +1923,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
                           draggable
                           onDragStart={(e) => handleDragStart(e, shape)}
                           onClick={() => addComponent(shape)}
-                          className="flex flex-col items-center justify-center p-1.5 lg:p-2 rounded-md border bg-background hover:bg-accent cursor-grab active:cursor-grabbing transition-colors"
-                          title={`Drag or click to add ${shape.label}`}
+                          className="flex flex-col items-center justify-center p-1.5 lg:p-2 rounded-md border bg-background hover:bg-accent hover:border-primary/30 transition-colors cursor-grab active:cursor-grabbing text-left"
+                          title={`Drag to canvas or click to add ${shape.label}`}
                         >
                           <div
                             className="w-7 h-7 lg:w-8 lg:h-8 rounded flex items-center justify-center text-white"
@@ -2109,18 +2064,43 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           </div>
         </div>
 
-        {/* Canvas or Mermaid preview */}
+        {/* Selection toolbar: appears when a shape on canvas is selected */}
+        {selectedObject && !(selectedObject as any).isConnector && !mermaidContent && (
+          <div className="flex items-center gap-2 px-3 py-2 border-b border-border bg-background/95">
+            <span className="text-[10px] lg:text-xs text-muted-foreground mr-2">Selection</span>
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              className="h-7 lg:h-8 text-xs"
+              onClick={startConnectorFromSelection}
+              title="Connect to another shape"
+            >
+              <Link2 className="w-3.5 h-3.5 lg:w-4 lg:h-4 mr-1.5" />
+              Connector
+            </Button>
+          </div>
+        )}
+
+        {/* Canvas or Mermaid preview - grid via CSS so shapes sit on top */}
         <div
           ref={containerRef}
-          className="flex-1 relative bg-muted/30 min-h-0"
-          tabIndex={0}
+          className="flex-1 relative min-h-0 bg-[#f8fafc]"
+          style={{
+            backgroundImage: `
+              linear-gradient(to right, #e2e8f0 0.5px, transparent 0.5px),
+              linear-gradient(to bottom, #e2e8f0 0.5px, transparent 0.5px)
+            `,
+            backgroundSize: "20px 20px",
+          }}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
+          tabIndex={0}
         >
           {mermaidContent ? (
             <div
               ref={mermaidContainerRef}
-              className="absolute inset-0 overflow-auto flex items-center justify-center p-6 bg-background"
+              className="absolute inset-0 overflow-auto flex items-center justify-center p-8 bg-background/95"
             />
           ) : (
             <canvas ref={canvasRef} className="absolute inset-0" tabIndex={0} />
