@@ -320,32 +320,35 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
   // Mermaid diagram (when content is mermaid code, not Fabric JSON)
   const [mermaidContent, setMermaidContent] = useState<string | null>(null);
-  const mermaidContainerRef = useRef<HTMLDivElement>(null);
 
-  // Reset state when diagramId changes to a different diagram
+  // Reset state when diagramId changes to a different diagram (but don't clear canvas here - let loadDiagram handle it)
   useEffect(() => {
     // Only reset if diagramId changed and it's not the same as currentDiagramId
     // This prevents resetting when loading the same diagram
     if (diagramId !== currentDiagramId && diagramId !== null) {
+      // Clear mermaid state
       setMermaidContent(null);
+      setMermaidSvg(null);
+      setMermaidError(null);
+      
+      // Reset title (will be set by loadDiagram)
       setDiagramTitle("Untitled Diagram");
       setHasUnsavedChanges(false);
-      if (fabricCanvas) {
-        fabricCanvas.clear();
-        fabricCanvas.renderAll();
-      }
     } else if (diagramId === null && currentDiagramId !== null) {
-      // Switching to new diagram (diagramId is null, but we had a previous diagram)
+      // Switching to new diagram (diagramId is null)
       setMermaidContent(null);
+      setMermaidSvg(null);
+      setMermaidError(null);
       setDiagramTitle("Untitled Diagram");
       setHasUnsavedChanges(false);
       setCurrentDiagramId(null);
+      // Clear canvas for new diagram
       if (fabricCanvas) {
         fabricCanvas.clear();
         fabricCanvas.renderAll();
       }
     }
-  }, [diagramId, currentDiagramId, fabricCanvas]);
+  }, [diagramId, currentDiagramId]);
 
   // Track changes
   const markChanged = useCallback(() => {
@@ -572,7 +575,15 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   // Load existing diagram
   useEffect(() => {
     const loadDiagram = async () => {
-      if (!diagramId) return;
+      if (!diagramId) {
+        // Clear canvas for new diagram
+        if (fabricCanvas) {
+          fabricCanvas.clear();
+          fabricCanvas.renderAll();
+        }
+        return;
+      }
+      
       const token = getAccessToken();
       if (!token) return;
 
@@ -601,65 +612,77 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         if (isMermaidCode) {
           // Content is mermaid code (e.g. from template or AI)
           setMermaidContent(trimmed);
+          // Clear canvas when showing mermaid
+          if (fabricCanvas) {
+            fabricCanvas.clear();
+            fabricCanvas.renderAll();
+          }
         } else {
           // Try to parse as Fabric canvas JSON
           try {
             const canvasData = JSON.parse(data.content);
             setMermaidContent(null);
-            // Only load into canvas if fabricCanvas is ready
-            if (fabricCanvas && canvasData.objects) {
-              await fabricCanvas.loadFromJSON(canvasData, async () => {
-                const objects = fabricCanvas.getObjects();
-                for (const obj of objects) {
-                  if (obj.type === 'group') {
-                    const group = obj as FabricGroup;
-                    const groupObjects = group.getObjects();
-                    const updatedObjects: FabricObject[] = [];
-                      
-                    for (const childObj of groupObjects) {
-                      if (childObj.type === 'image') {
-                        const imgObj = childObj as any;
-                        if (imgObj.src && imgObj.src.startsWith('data:image')) {
-                          try {
-                            const img = await FabricImage.fromURL(imgObj.src);
-                            img.set({
-                              left: childObj.left || 0,
-                              top: childObj.top || 0,
-                              scaleX: childObj.scaleX || 1,
-                              scaleY: childObj.scaleY || 1,
-                              originX: childObj.originX || 'left',
-                              originY: childObj.originY || 'top',
-                              selectable: false,
-                              evented: false,
-                            });
-                            updatedObjects.push(img);
-                          } catch (err) {
-                            console.error('Failed to restore image:', err);
+            // Clear canvas first before loading new content
+            if (fabricCanvas) {
+              fabricCanvas.clear();
+              // Only load if we have objects
+              if (canvasData.objects && canvasData.objects.length > 0) {
+                await fabricCanvas.loadFromJSON(canvasData, async () => {
+                  const objects = fabricCanvas.getObjects();
+                  for (const obj of objects) {
+                    if (obj.type === 'group') {
+                      const group = obj as FabricGroup;
+                      const groupObjects = group.getObjects();
+                      const updatedObjects: FabricObject[] = [];
+                        
+                      for (const childObj of groupObjects) {
+                        if (childObj.type === 'image') {
+                          const imgObj = childObj as any;
+                          if (imgObj.src && imgObj.src.startsWith('data:image')) {
+                            try {
+                              const img = await FabricImage.fromURL(imgObj.src);
+                              img.set({
+                                left: childObj.left || 0,
+                                top: childObj.top || 0,
+                                scaleX: childObj.scaleX || 1,
+                                scaleY: childObj.scaleY || 1,
+                                originX: childObj.originX || 'left',
+                                originY: childObj.originY || 'top',
+                                selectable: false,
+                                evented: false,
+                              });
+                              updatedObjects.push(img);
+                            } catch (err) {
+                              console.error('Failed to restore image:', err);
+                              updatedObjects.push(childObj);
+                            }
+                          } else {
                             updatedObjects.push(childObj);
                           }
                         } else {
                           updatedObjects.push(childObj);
                         }
-                      } else {
-                        updatedObjects.push(childObj);
+                      }
+                        
+                      if (updatedObjects.length === groupObjects.length) {
+                        group.set('objects', updatedObjects);
                       }
                     }
-                      
-                    if (updatedObjects.length === groupObjects.length) {
-                      group.set('objects', updatedObjects);
-                    }
                   }
-                }
+                  fabricCanvas.renderAll();
+                });
+              } else {
                 fabricCanvas.renderAll();
-              });
-            } else if (!fabricCanvas) {
-              // Canvas not ready yet, but we have valid JSON - wait for canvas to initialize
-              // The canvas init effect will trigger this again when fabricCanvas becomes available
+              }
             }
           } catch (parseError) {
             // Not valid JSON, treat as mermaid code if it has content
             if (trimmed.length > 0) {
               setMermaidContent(trimmed);
+              if (fabricCanvas) {
+                fabricCanvas.clear();
+                fabricCanvas.renderAll();
+              }
             } else {
               setMermaidContent(null);
             }
@@ -671,115 +694,56 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
     };
 
     loadDiagram();
-  }, [diagramId, getAccessToken]);
+  }, [diagramId, getAccessToken, fabricCanvas]);
 
-  // Load Fabric canvas content when fabricCanvas becomes available (for diagrams that were loaded before canvas was ready)
-  useEffect(() => {
-    const loadCanvasContent = async () => {
-      if (!diagramId || !fabricCanvas || mermaidContent !== null) return;
-      const token = getAccessToken();
-      if (!token) return;
-
-      try {
-        const data = await getDiagram(token, diagramId);
-        const trimmed = String(data.content || "").trim();
-        
-        // Skip if it's mermaid code
-        const isMermaidCode = trimmed.length > 0 && (
-          trimmed.startsWith('graph ') ||
-          trimmed.startsWith('flowchart ') ||
-          trimmed.startsWith('sequenceDiagram') ||
-          trimmed.startsWith('erDiagram') ||
-          trimmed.startsWith('gantt') ||
-          trimmed.startsWith('stateDiagram') ||
-          trimmed.startsWith('C4Context') ||
-          trimmed.startsWith('mindmap') ||
-          trimmed.includes('-->') ||
-          trimmed.includes('->>') ||
-          (trimmed.includes('subgraph') && trimmed.includes('end'))
-        );
-        
-        if (isMermaidCode) return;
-
-        try {
-          const canvasData = JSON.parse(data.content);
-          if (canvasData.objects) {
-            await fabricCanvas.loadFromJSON(canvasData, async () => {
-              const objects = fabricCanvas.getObjects();
-              for (const obj of objects) {
-                if (obj.type === 'group') {
-                  const group = obj as FabricGroup;
-                  const groupObjects = group.getObjects();
-                  const updatedObjects: FabricObject[] = [];
-                    
-                  for (const childObj of groupObjects) {
-                    if (childObj.type === 'image') {
-                      const imgObj = childObj as any;
-                      if (imgObj.src && imgObj.src.startsWith('data:image')) {
-                        try {
-                          const img = await FabricImage.fromURL(imgObj.src);
-                          img.set({
-                            left: childObj.left || 0,
-                            top: childObj.top || 0,
-                            scaleX: childObj.scaleX || 1,
-                            scaleY: childObj.scaleY || 1,
-                            originX: childObj.originX || 'left',
-                            originY: childObj.originY || 'top',
-                            selectable: false,
-                            evented: false,
-                          });
-                          updatedObjects.push(img);
-                        } catch (err) {
-                          console.error('Failed to restore image:', err);
-                          updatedObjects.push(childObj);
-                        }
-                      } else {
-                        updatedObjects.push(childObj);
-                      }
-                    } else {
-                      updatedObjects.push(childObj);
-                    }
-                  }
-                    
-                  if (updatedObjects.length === groupObjects.length) {
-                    group.set('objects', updatedObjects);
-                  }
-                }
-              }
-              fabricCanvas.renderAll();
-            });
-          }
-        } catch (parseError) {
-          // Not valid JSON, ignore
-        }
-      } catch (err) {
-        // Ignore errors here - already handled in main loadDiagram effect
-      }
-    };
-
-    loadCanvasContent();
-  }, [diagramId, fabricCanvas, mermaidContent, getAccessToken]);
 
   // Render mermaid when content is mermaid code
+  const [mermaidSvg, setMermaidSvg] = useState<string | null>(null);
+  const [mermaidError, setMermaidError] = useState<string | null>(null);
+
   useEffect(() => {
-    if (!mermaidContent || !mermaidContainerRef.current) return;
-    const container = mermaidContainerRef.current;
-    container.innerHTML = "";
+    if (!mermaidContent) {
+      setMermaidSvg(null);
+      setMermaidError(null);
+      return;
+    }
+
+    let cancelled = false;
     const id = `mermaid-editor-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    mermaid.initialize({ startOnLoad: false, securityLevel: "loose" });
+    
+    // Initialize mermaid
+    mermaid.initialize({ 
+      startOnLoad: false, 
+      securityLevel: "loose",
+      theme: "base",
+      themeVariables: {
+        primaryColor: "#6366f1",
+        primaryTextColor: "#fff",
+        primaryBorderColor: "#4f46e5",
+        lineColor: "#64748b",
+        background: "#f8fafc",
+      },
+    });
+
     mermaid
       .render(id, mermaidContent)
       .then(({ svg }) => {
-        if (mermaidContainerRef.current) {
-          mermaidContainerRef.current.innerHTML = `<div class="bg-card rounded-xl border shadow-sm p-6 max-w-4xl mx-auto [&_svg]:max-w-full [&_svg]:h-auto">${svg}</div>`;
+        if (!cancelled) {
+          setMermaidSvg(svg);
+          setMermaidError(null);
         }
       })
       .catch((err) => {
         console.error("Mermaid render error:", err);
-        if (mermaidContainerRef.current) {
-          mermaidContainerRef.current.innerHTML = `<div class="p-4 text-sm text-muted-foreground">Could not render diagram. The content may be invalid Mermaid syntax.</div>`;
+        if (!cancelled) {
+          setMermaidError("Could not render diagram. The content may be invalid Mermaid syntax.");
+          setMermaidSvg(null);
         }
       });
+
+    return () => {
+      cancelled = true;
+    };
   }, [mermaidContent]);
 
   // Find empty position for new shape
@@ -2327,10 +2291,18 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           tabIndex={0}
         >
           {mermaidContent ? (
-            <div
-              ref={mermaidContainerRef}
-              className="absolute inset-0 overflow-auto flex items-center justify-center p-8 bg-background/95"
-            />
+            <div className="absolute inset-0 overflow-auto flex items-center justify-center p-8 bg-background/95">
+              {mermaidError ? (
+                <div className="p-4 text-sm text-muted-foreground">{mermaidError}</div>
+              ) : mermaidSvg ? (
+                <div 
+                  className="bg-card rounded-xl border shadow-sm p-6 max-w-4xl mx-auto [&_svg]:max-w-full [&_svg]:h-auto"
+                  dangerouslySetInnerHTML={{ __html: mermaidSvg }}
+                />
+              ) : (
+                <div className="p-4 text-sm text-muted-foreground animate-pulse">Rendering diagram...</div>
+              )}
+            </div>
           ) : (
             <>
               <canvas ref={canvasRef} className="absolute inset-0" tabIndex={0} />

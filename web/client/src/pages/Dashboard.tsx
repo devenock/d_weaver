@@ -51,6 +51,20 @@ const Dashboard = () => {
     }
     try {
       const list = await listDiagrams(token);
+      // Debug: Check if diagrams have content
+      if (list.length > 0) {
+        console.log("Loaded diagrams:", list.length);
+        list.forEach((d, i) => {
+          if (i < 3) { // Log first 3 for debugging
+            console.log(`Diagram ${i + 1}: "${d.title}"`, {
+              hasContent: !!d.content,
+              contentLength: d.content?.length || 0,
+              contentPreview: d.content?.substring(0, 50) || "none",
+              hasImageUrl: !!d.image_url,
+            });
+          }
+        });
+      }
       setDiagrams(list);
     } catch (err) {
       toast({ title: "Error", description: getApiErrorMessage(err, "Failed to load diagrams"), variant: "destructive" });
@@ -290,6 +304,7 @@ const Dashboard = () => {
 
           {viewMode === "editor" && (
             <EmbeddedEditor
+              key={selectedDiagramId || "new-diagram"}
               diagramId={selectedDiagramId}
               user={user}
               onClose={handleCloseEditor}
