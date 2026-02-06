@@ -35,6 +35,7 @@ const Dashboard = () => {
   const [inviteTeamOpen, setInviteTeamOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [aiGenerateOpen, setAIGenerateOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const {
     workspaces,
@@ -139,6 +140,11 @@ const Dashboard = () => {
     }
   }, [selectWorkspaceIdFromState, workspaces, selectWorkspace, navigate, location.pathname]);
 
+  useEffect(() => {
+    // Collapse sidebar in editor/whiteboard, expand on dashboard
+    setSidebarOpen(viewMode === "dashboard");
+  }, [viewMode]);
+
   const handleDiagramClick = (diagram: DiagramResponse) => {
     setSelectedDiagramId(diagram.id);
     if (diagram.diagram_type === "whiteboard") {
@@ -232,7 +238,7 @@ const Dashboard = () => {
   }
 
   return (
-    <SidebarProvider>
+    <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
       <div className="min-h-screen flex w-full">
         <AppSidebar
           workspaces={workspaces}

@@ -92,12 +92,13 @@ import type { ApiUser } from "@/lib/auth-api";
 import { getDiagram, createDiagram, updateDiagram, uploadDiagramImage, listComments, addComment } from "@/lib/diagram-api";
 import { getApiErrorMessage } from "@/lib/api";
 import type { CommentResponse } from "@/lib/api-types";
-import { Canvas as FabricCanvas, Rect, Circle, Textbox, Polygon, Path, FabricObject, Group as FabricGroup, FabricImage, ActiveSelection } from "fabric";
+import { Canvas as FabricCanvas, Rect, Circle, Textbox, Polygon, Path, FabricObject, Group as FabricGroup, FabricImage, ActiveSelection, loadSVGFromString, util } from "fabric";
 import { LayersPanel } from "./editor/LayersPanel";
 import { AlignmentTools } from "./editor/AlignmentTools";
 import { HistoryPanel } from "./editor/HistoryPanel";
 import { useSmartGuides } from "./editor/SmartGuides";
 import { KeyboardShortcutsPanel } from "./editor/KeyboardShortcutsPanel";
+import { SidebarTrigger } from "@/components/ui/sidebar";
 import { createFabricConnector, updateConnectorPath } from "./editor/CurvedConnector";
 import type { ConnectorStyle, ArrowStyle } from "./editor/CurvedConnector";
 import { createIconDataUrl } from "./editor/ShapeRenderer";
@@ -215,13 +216,14 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   const [showProperties, setShowProperties] = useState(false);
   const [showLayers, setShowLayers] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [showShapesPanel, setShowShapesPanel] = useState(true);
+  const [showShapesPanel, setShowShapesPanel] = useState(false);
   const [zoom, setZoom] = useState(100);
   const [history, setHistory] = useState<string[]>([]);
   const [historyStep, setHistoryStep] = useState(0);
   const historyStepRef = useRef(0);
   const [_hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [mermaidLoadedToCanvas, setMermaidLoadedToCanvas] = useState(false);
 
   // Selection & Properties
   const [selectedObject, setSelectedObject] = useState<FabricObject | null>(null);
@@ -330,6 +332,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       setMermaidContent(null);
       setMermaidSvg(null);
       setMermaidError(null);
+      setMermaidLoadedToCanvas(false);
       mermaidCancelRef.current = true;
       
       if (diagramId === null) {
@@ -829,6 +832,38 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       mermaidRenderIdRef.current = null;
     };
   }, [mermaidContent]);
+
+  // Convert Mermaid SVG into editable Fabric objects when possible.
+  useEffect(() => {
+    if (!mermaidSvg || !fabricCanvas || mermaidLoadedToCanvas) return;
+
+    let cancelled = false;
+
+    const loadMermaidSvg = async () => {
+      try {
+        const { objects, options } = await loadSVGFromString(mermaidSvg);
+        if (!objects || objects.length === 0 || cancelled) return;
+
+        const group = util.groupSVGElements(objects, options);
+        fabricCanvas.clear();
+        fabricCanvas.add(group);
+        fabricCanvas.centerObject(group);
+        fabricCanvas.renderAll();
+
+        // Hide Mermaid overlay and mark as loaded to canvas
+        setMermaidLoadedToCanvas(true);
+        setMermaidContent(null);
+      } catch (error) {
+        console.error("Failed to load Mermaid SVG into canvas:", error);
+      }
+    };
+
+    loadMermaidSvg();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mermaidSvg, fabricCanvas, mermaidLoadedToCanvas]);
 
   // Find empty position for new shape
   const findEmptyPosition = useCallback(
@@ -2294,15 +2329,37 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         </ScrollArea>
       </div>
 
-      {/* Toggle sidebar button (mobile) */}
-      <Button
-        variant="outline"
-        size="icon"
-        className="absolute left-2 top-2 z-30 h-8 w-8 lg:hidden bg-background"
-        onClick={() => setShowShapesPanel(!showShapesPanel)}
-      >
-        <Menu className="h-4 w-4" />
-      </Button>
+      {/* Floating editor controls (Creately-style) */}
+      <div className="absolute left-4 top-4 z-30 flex items-center gap-1 rounded-md border border-border bg-background/90 p-1 shadow-sm">
+        <SidebarTrigger className="h-7 w-7" />
+        <Button
+          variant={showShapesPanel ? "secondary" : "ghost"}
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => setShowShapesPanel(!showShapesPanel)}
+          title={showShapesPanel ? "Hide tools" : "Show tools"}
+        >
+          <Menu className="h-4 w-4" />
+        </Button>
+        <Button
+          variant={showLayers ? "secondary" : "ghost"}
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => setShowLayers(!showLayers)}
+          title={showLayers ? "Hide layers" : "Show layers"}
+        >
+          <Layers className="h-4 w-4" />
+        </Button>
+        <Button
+          variant={showHistory ? "secondary" : "ghost"}
+          size="icon"
+          className="h-7 w-7"
+          onClick={() => setShowHistory(!showHistory)}
+          title={showHistory ? "Hide history" : "Show history"}
+        >
+          <History className="h-4 w-4" />
+        </Button>
+      </div>
 
       {/* Layers Panel */}
       <LayersPanel
