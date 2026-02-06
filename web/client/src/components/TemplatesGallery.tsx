@@ -1,13 +1,82 @@
+import { useState, useEffect } from "react";
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { X, Grid3X3 } from "lucide-react";
+import { X, Grid3X3, Search } from "lucide-react";
+import mermaid from "mermaid";
+
+// Professional color palette for Mermaid previews (Creately-style variety)
+const MERMAID_THEME = {
+  theme: "base" as const,
+  themeVariables: {
+    primaryColor: "#6366f1",
+    primaryTextColor: "#fff",
+    primaryBorderColor: "#4f46e5",
+    secondaryColor: "#8b5cf6",
+    tertiaryColor: "#ec4899",
+    lineColor: "#64748b",
+    secondaryBorderColor: "#7c3aed",
+    tertiaryBorderColor: "#db2777",
+    background: "#f8fafc",
+    mainBkg: "#6366f1",
+    secondBkg: "#8b5cf6",
+    tertiaryBkg: "#14b8a6",
+    nodeBorder: "#4f46e5",
+    clusterBkg: "#e0e7ff",
+    titleColor: "#1e293b",
+    edgeLabelBackground: "#f1f5f9",
+    nodeTextColor: "#fff",
+    textColor: "#334155",
+  },
+};
+
+function TemplatePreview({ code, id }: { code: string; id: string }) {
+  const [svg, setSvg] = useState<string | null>(null);
+  const [error, setError] = useState(false);
+
+  useEffect(() => {
+    if (!code.trim()) return;
+    const renderId = `template-${id}-${Math.random().toString(36).slice(2, 9)}`;
+    mermaid.initialize({
+      startOnLoad: false,
+      securityLevel: "loose",
+      ...MERMAID_THEME,
+    });
+    mermaid
+      .render(renderId, code)
+      .then(({ svg: result }) => setSvg(result))
+      .catch(() => setError(true));
+  }, [code, id]);
+
+  if (error) {
+    return (
+      <div className="w-full h-full min-h-[140px] flex items-center justify-center rounded-lg bg-muted/50 border border-dashed">
+        <span className="text-xs text-muted-foreground">Preview</span>
+      </div>
+    );
+  }
+  if (!svg) {
+    return (
+      <div className="w-full h-full min-h-[140px] flex items-center justify-center rounded-lg bg-muted/50 animate-pulse">
+        <span className="text-xs text-muted-foreground">Loading…</span>
+      </div>
+    );
+  }
+  return (
+    <div
+      className="w-full h-full min-h-[140px] rounded-lg bg-[#f8fafc] border border-border overflow-hidden flex items-center justify-center p-2 [&_svg]:max-w-full [&_svg]:max-h-full [&_svg]:h-auto [&_svg]:w-auto [&_svg]:object-contain"
+      dangerouslySetInnerHTML={{ __html: svg }}
+    />
+  );
+}
 
 const TEMPLATES = [
   {
     id: "microservices",
     name: "Microservices Architecture",
     type: "architecture",
+    category: "Software & IT",
     code: `graph TB
     subgraph "Client Layer"
         Web[Web App]
@@ -46,6 +115,7 @@ const TEMPLATES = [
     id: "cicd",
     name: "CI/CD Pipeline",
     type: "flowchart",
+    category: "Software & IT",
     code: `flowchart LR
     A[Code Commit] --> B[Build]
     B --> C{Tests Pass?}
@@ -63,6 +133,7 @@ const TEMPLATES = [
     id: "user-auth",
     name: "User Authentication Flow",
     type: "sequence",
+    category: "Software & IT",
     code: `sequenceDiagram
     participant U as User
     participant C as Client
@@ -88,6 +159,7 @@ const TEMPLATES = [
     id: "ecommerce-db",
     name: "E-Commerce Database",
     type: "er",
+    category: "Data",
     code: `erDiagram
     CUSTOMER ||--o{ ORDER : places
     ORDER ||--|{ LINE_ITEM : contains
@@ -131,6 +203,7 @@ const TEMPLATES = [
     id: "agile-sprint",
     name: "Agile Sprint Timeline",
     type: "gantt",
+    category: "Planning",
     code: `gantt
     title Sprint Planning & Execution
     dateFormat YYYY-MM-DD
@@ -153,6 +226,7 @@ const TEMPLATES = [
     id: "state-machine",
     name: "Order State Machine",
     type: "state",
+    category: "Software & IT",
     code: `stateDiagram-v2
     [*] --> Draft
     Draft --> Pending: Submit Order
@@ -172,6 +246,7 @@ const TEMPLATES = [
     id: "system-design",
     name: "Scalable Web Application",
     type: "c4context",
+    category: "Software & IT",
     code: `C4Context
     title System Context - Social Media Platform
     
@@ -195,6 +270,7 @@ const TEMPLATES = [
     id: "project-structure",
     name: "Project Component Structure",
     type: "mindmap",
+    category: "Planning",
     code: `mindmap
   root((Web App))
     Frontend
@@ -236,35 +312,89 @@ export interface TemplatesGalleryProps {
   onClose: () => void;
 }
 
+const CATEGORIES = ["All", "Software & IT", "Data", "Planning"];
+
 const TemplatesGallery = ({ onSelectTemplate, onClose }: TemplatesGalleryProps) => {
+  const [search, setSearch] = useState("");
+  const [category, setCategory] = useState("All");
+
+  const filtered = TEMPLATES.filter((t) => {
+    const matchSearch =
+      !search.trim() ||
+      t.name.toLowerCase().includes(search.toLowerCase()) ||
+      t.type.toLowerCase().includes(search.toLowerCase()) ||
+      (t.category && t.category.toLowerCase().includes(search.toLowerCase()));
+    const matchCategory =
+      category === "All" || (t.category && t.category === category);
+    return matchSearch && matchCategory;
+  });
+
   return (
     <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-      <Card className="w-full max-w-5xl max-h-[90vh] p-6 shadow-card">
-        <div className="flex items-center justify-between mb-6">
+      <Card className="w-full max-w-5xl max-h-[90vh] p-6 shadow-card flex flex-col">
+        <div className="flex items-center justify-between gap-4 mb-4 flex-shrink-0">
           <div className="flex items-center gap-2">
             <Grid3X3 className="w-5 h-5 text-primary" />
-            <h2 className="text-2xl font-bold">Diagram Templates</h2>
+            <h2 className="text-2xl font-bold">Templates</h2>
+          </div>
+          <div className="flex items-center gap-2 flex-1 max-w-sm">
+            <div className="relative flex-1">
+              <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+              <Input
+                placeholder="Search templates..."
+                value={search}
+                onChange={(e) => setSearch(e.target.value)}
+                className="pl-8 h-9"
+              />
+            </div>
           </div>
           <Button variant="ghost" size="icon" onClick={onClose}>
             <X className="w-5 h-5" />
           </Button>
         </div>
 
-        <ScrollArea className="h-[calc(90vh-120px)]">
-          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4">
-            {TEMPLATES.map((template) => (
+        <div className="flex gap-2 mb-4 flex-shrink-0">
+          {CATEGORIES.map((cat) => (
+            <Button
+              key={cat}
+              variant={category === cat ? "secondary" : "ghost"}
+              size="sm"
+              className="h-8"
+              onClick={() => setCategory(cat)}
+            >
+              {cat}
+            </Button>
+          ))}
+        </div>
+
+        <ScrollArea className="flex-1 min-h-0">
+          <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-4 pb-4">
+            {filtered.map((template) => (
               <Card
                 key={template.id}
-                className="p-4 hover:shadow-lg transition-shadow cursor-pointer border-2 hover:border-primary"
+                className="overflow-hidden hover:shadow-lg transition-all cursor-pointer border-2 hover:border-primary group"
                 onClick={() => {
                   onSelectTemplate(template.code, template.type, template.name);
                   onClose();
                 }}
               >
-                <h3 className="font-semibold mb-2">{template.name}</h3>
-                <p className="text-sm text-muted-foreground capitalize">{template.type}</p>
-                <div className="mt-3 p-2 bg-muted rounded text-xs font-mono overflow-hidden">
-                  <pre className="line-clamp-3">{template.code}</pre>
+                <div className="aspect-[4/3] w-full overflow-hidden bg-muted/30">
+                  <TemplatePreview code={template.code} id={template.id} />
+                </div>
+                <div className="p-3 border-t">
+                  <h3 className="font-semibold text-sm truncate group-hover:text-primary transition-colors">
+                    {template.name}
+                  </h3>
+                  <div className="flex items-center justify-between mt-1">
+                    <span className="text-xs text-muted-foreground capitalize">
+                      {template.type}
+                    </span>
+                    {template.category && (
+                      <span className="text-[10px] text-muted-foreground bg-muted px-1.5 py-0.5 rounded">
+                        {template.category}
+                      </span>
+                    )}
+                  </div>
                 </div>
               </Card>
             ))}
