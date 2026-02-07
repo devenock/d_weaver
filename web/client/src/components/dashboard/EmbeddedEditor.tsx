@@ -1086,6 +1086,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         const group = new FabricGroup([img, labelText], {
           left,
           top,
+          originX: "left",
+          originY: "top",
           layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
         });
         // No padding so selection box tightly wraps the icon and label (like Creately)
@@ -1115,27 +1117,18 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
             radius: circleRadius, 
             left: 0, 
             top: 0,
-            originX: 'center',
-            originY: 'center',
+            originX: "left",
+            originY: "top",
             ...baseProps 
           });
           
-          const labelText = new Textbox(label, {
-            fontSize: 12,
-            fill: getContrastTextColor(color),
-            fontFamily: "Inter, sans-serif",
-            fontWeight: "bold",
-            originX: "center",
-            originY: "center",
-            textAlign: "center",
-            width: circleRadius * 1.5,
-            left: 0,
-            top: 0,
-          });
+          const labelText = createCenteredLabel(label, circleRadius * 2, circleRadius * 2, 12, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -1158,6 +1151,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -1181,6 +1176,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -1203,6 +1200,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -1225,6 +1224,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -1247,6 +1248,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -1270,6 +1273,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -1293,6 +1298,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -1310,6 +1317,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
