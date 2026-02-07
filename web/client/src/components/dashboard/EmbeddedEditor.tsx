@@ -93,7 +93,7 @@ import type { ApiUser } from "@/lib/auth-api";
 import { getDiagram, createDiagram, updateDiagram, uploadDiagramImage, listComments, addComment } from "@/lib/diagram-api";
 import { getApiErrorMessage } from "@/lib/api";
 import type { CommentResponse } from "@/lib/api-types";
-import { Canvas as FabricCanvas, Rect, Circle, Textbox, Polygon, Path, FabricObject, Group as FabricGroup, FabricImage, ActiveSelection, loadSVGFromString, util, Point } from "fabric";
+import { Canvas as FabricCanvas, Rect, Circle, Textbox, Polygon, Path, FabricObject, Group as FabricGroup, FabricImage, ActiveSelection, loadSVGFromString, util, Point, Shadow } from "fabric";
 import { LayersPanel } from "./editor/LayersPanel";
 import { AlignmentTools } from "./editor/AlignmentTools";
 import { HistoryPanel } from "./editor/HistoryPanel";
@@ -348,6 +348,48 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
   // Mermaid diagram (when content is mermaid code, not Fabric JSON)
   const [mermaidContent, setMermaidContent] = useState<string | null>(null);
+
+  const hexToRgb = (hex: string) => {
+    const cleaned = hex.replace("#", "");
+    if (cleaned.length !== 6) return null;
+    const num = parseInt(cleaned, 16);
+    return {
+      r: (num >> 16) & 255,
+      g: (num >> 8) & 255,
+      b: num & 255,
+    };
+  };
+
+  const darkenHex = (hex: string, amount: number) => {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return "#1E40AF";
+    const clamp = (v: number) => Math.max(0, Math.min(255, v));
+    const r = clamp(rgb.r - amount);
+    const g = clamp(rgb.g - amount);
+    const b = clamp(rgb.b - amount);
+    return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+  };
+
+  const getContrastTextColor = (hex: string) => {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return "#0f172a";
+    const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+    return luminance > 0.6 ? "#0f172a" : "#ffffff";
+  };
+
+  const createCenteredLabel = (label: string, width: number, height: number, fontSize: number, color: string) =>
+    new Textbox(label, {
+      fontSize,
+      fill: getContrastTextColor(color),
+      fontFamily: "Inter, sans-serif",
+      fontWeight: "bold",
+      originX: "center",
+      originY: "center",
+      textAlign: "center",
+      width: Math.max(width - 20, 60),
+      left: width / 2,
+      top: height / 2,
+    });
 
   // Toggle canvas interactivity when Mermaid overlay is shown
   useEffect(() => {
@@ -981,8 +1023,14 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   const createShape = useCallback(async (shapeType: ShapeType, color: string, left: number, top: number, label: string): Promise<FabricObject> => {
     const baseProps = {
       fill: color,
-      stroke: "#1E40AF",
-      strokeWidth: 2,
+      stroke: darkenHex(color, 24),
+      strokeWidth: 1.5,
+      shadow: new Shadow({
+        color: "rgba(15, 23, 42, 0.18)",
+        blur: 6,
+        offsetX: 0,
+        offsetY: 2,
+      }),
     };
 
     const shapeId = `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -1022,7 +1070,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
         const labelText = new Textbox(label, {
           fontSize: 12,
-          fill: "#1a1a1a",
+          fill: "#0f172a",
           fontFamily: "Inter, sans-serif",
           fontWeight: "bold",
           originX: "center",
@@ -1074,12 +1122,12 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           
           const labelText = new Textbox(label, {
             fontSize: 12,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
+            fill: getContrastTextColor(color),
+            fontFamily: "Inter, sans-serif",
+            fontWeight: "bold",
+            originX: "center",
+            originY: "center",
+            textAlign: "center",
             width: circleRadius * 1.5,
             left: 0,
             top: 0,
@@ -1105,18 +1153,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           ];
           shapeObj = new Polygon(triPoints, { left: 0, top: 0, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 12,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 80,
-            left: 60,
-            top: 60,
-          });
+          const labelText = createCenteredLabel(label, 120, 100, 12, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
@@ -1139,18 +1176,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           ];
           shapeObj = new Polygon(diamondPoints, { left: 0, top: 0, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 11,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 80,
-            left: 60,
-            top: 50,
-          });
+          const labelText = createCenteredLabel(label, 120, 100, 11, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
@@ -1172,18 +1198,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           }
           shapeObj = new Polygon(hexPoints, { left: 0, top: 0, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 11,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 70,
-            left: 50,
-            top: 50,
-          });
+          const labelText = createCenteredLabel(label, 100, 100, 11, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
@@ -1205,18 +1220,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           }
           shapeObj = new Polygon(pentPoints, { left: 0, top: 0, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 11,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 70,
-            left: 50,
-            top: 50,
-          });
+          const labelText = createCenteredLabel(label, 100, 100, 11, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
@@ -1238,18 +1242,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           }
           shapeObj = new Polygon(octPoints, { left: 0, top: 0, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 11,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 70,
-            left: 50,
-            top: 50,
-          });
+          const labelText = createCenteredLabel(label, 100, 100, 11, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
@@ -1272,18 +1265,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           }
           shapeObj = new Polygon(starPoints, { left: 0, top: 0, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 10,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 50,
-            left: 50,
-            top: 50,
-          });
+          const labelText = createCenteredLabel(label, 100, 100, 10, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
@@ -1306,18 +1288,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           ];
           shapeObj = new Polygon(paraPoints, { left: 0, top: 0, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 11,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 80,
-            left: 60,
-            top: 30,
-          });
+          const labelText = createCenteredLabel(label, 120, 60, 11, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
@@ -1334,18 +1305,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         case "roundedRect": {
           shapeObj = new Rect({ left: 0, top: 0, width: 120, height: 80, rx: 16, ry: 16, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 12,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 100,
-            left: 60,
-            top: 40,
-          });
+          const labelText = createCenteredLabel(label, 120, 80, 12, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
@@ -1363,18 +1323,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           // Rectangle
           shapeObj = new Rect({ left: 0, top: 0, width: 120, height: 80, rx: 4, ry: 4, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 12,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 100,
-            left: 60,
-            top: 40,
-          });
+          const labelText = createCenteredLabel(label, 120, 80, 12, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
@@ -2540,11 +2489,12 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           ref={containerRef}
           className="flex-1 relative min-h-0"
           style={{
-            backgroundColor: "#f8f7f3",
+            backgroundColor: "#f8f9fb",
             backgroundImage: `
-              radial-gradient(#d7d2cb 0.6px, transparent 0.6px)
+              linear-gradient(0deg, rgba(148, 163, 184, 0.15) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(148, 163, 184, 0.15) 1px, transparent 1px)
             `,
-            backgroundSize: "20px 20px",
+            backgroundSize: "24px 24px",
           }}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
