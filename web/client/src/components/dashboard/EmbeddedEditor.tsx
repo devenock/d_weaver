@@ -1056,6 +1056,16 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         const centerX = shapeWidth / 2;
         const iconY = 20;
         const labelY = 20 + scaledH + 6;
+        const boundsRect = new Rect({
+          left: 0,
+          top: 0,
+          width: shapeWidth,
+          height: shapeHeight,
+          fill: "rgba(0,0,0,0)",
+          stroke: "rgba(0,0,0,0)",
+          selectable: false,
+          evented: false,
+        });
         img.set({
           left: centerX - scaledW / 2,
           top: iconY,
@@ -1082,8 +1092,11 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           selectable: false,
           evented: false,
         });
+        const labelHeight = labelText.height ?? 0;
+        const maxTop = Math.max(0, shapeHeight - labelHeight - 6);
+        labelText.set({ top: Math.min(labelY, maxTop) });
 
-        const group = new FabricGroup([img, labelText], {
+        const group = new FabricGroup([boundsRect, img, labelText], {
           left,
           top,
           originX: "left",
