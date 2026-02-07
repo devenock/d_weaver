@@ -399,6 +399,15 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
     const canvasElement = canvasRef.current;
     const existingCanvas = (canvasElement as any).__canvas as FabricCanvas | undefined;
 
+    // If this element was already initialized, reuse the existing Fabric instance.
+    if (canvasElement.dataset.fabricInit === "true") {
+      if (existingCanvas) {
+        fabricCanvasRef.current = existingCanvas;
+        setFabricCanvas(existingCanvas);
+      }
+      return;
+    }
+
     // If Fabric already initialized on this element, reuse it.
     if (existingCanvas) {
       fabricCanvasRef.current = existingCanvas;
@@ -421,6 +430,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
     isMountedRef.current = true;
     canvasInitRef.current = true;
+    canvasElement.dataset.fabricInit = "true";
     const container = containerRef.current;
 
     let canvas: FabricCanvas;
@@ -434,6 +444,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       });
     } catch (error: any) {
       console.error("Fabric initialization failed:", error);
+      canvasElement.dataset.fabricInit = "false";
       return;
     }
 
@@ -573,6 +584,9 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       fabricCanvasRef.current = null;
       setFabricCanvas(null);
       canvasInitRef.current = false;
+      if (canvasRef.current) {
+        canvasRef.current.dataset.fabricInit = "false";
+      }
     };
   }, []);
 
