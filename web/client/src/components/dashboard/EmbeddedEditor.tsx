@@ -82,6 +82,7 @@ import {
   PenTool as PenToolIcon,
   Smile,
   MessageSquare as CommentIcon,
+  GripVertical,
   Sparkles,
   MoreVertical,
   Plus,
@@ -98,7 +99,6 @@ import { AlignmentTools } from "./editor/AlignmentTools";
 import { HistoryPanel } from "./editor/HistoryPanel";
 import { useSmartGuides } from "./editor/SmartGuides";
 import { KeyboardShortcutsPanel } from "./editor/KeyboardShortcutsPanel";
-import { SidebarTrigger } from "@/components/ui/sidebar";
 import { createFabricConnector, updateConnectorPath } from "./editor/CurvedConnector";
 import type { ConnectorStyle, ArrowStyle } from "./editor/CurvedConnector";
 import { createIconDataUrl } from "./editor/ShapeRenderer";
@@ -217,6 +217,9 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   const [showLayers, setShowLayers] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
   const [showShapesPanel, setShowShapesPanel] = useState(false);
+  const [floatingToolbarPos, setFloatingToolbarPos] = useState({ x: 16, y: 16 });
+  const [isDraggingToolbar, setIsDraggingToolbar] = useState(false);
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(100);
   const [history, setHistory] = useState<string[]>([]);
   const [historyStep, setHistoryStep] = useState(0);
@@ -224,6 +227,29 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   const [_hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
   const [mermaidLoadedToCanvas, setMermaidLoadedToCanvas] = useState(false);
+
+  useEffect(() => {
+    if (!isDraggingToolbar) return;
+
+    const handleMove = (event: MouseEvent) => {
+      setFloatingToolbarPos({
+        x: Math.max(8, event.clientX - dragOffsetRef.current.x),
+        y: Math.max(8, event.clientY - dragOffsetRef.current.y),
+      });
+    };
+
+    const handleUp = () => {
+      setIsDraggingToolbar(false);
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+  }, [isDraggingToolbar]);
 
   // Selection & Properties
   const [selectedObject, setSelectedObject] = useState<FabricObject | null>(null);
@@ -365,17 +391,36 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   // Track if component is mounted to prevent operations after unmount
   const isMountedRef = useRef(true);
   const resizeHandlerRef = useRef<(() => void) | null>(null);
+  const canvasInitRef = useRef(false);
   // Initialize canvas once and reuse it across diagram switches.
   useEffect(() => {
     if (!canvasRef.current || !containerRef.current) return;
 
+    const canvasElement = canvasRef.current;
+    const existingCanvas = (canvasElement as any).__canvas as FabricCanvas | undefined;
+
+    // If Fabric already initialized on this element, reuse it.
+    if (existingCanvas) {
+      fabricCanvasRef.current = existingCanvas;
+      setFabricCanvas(existingCanvas);
+      canvasInitRef.current = true;
+      return;
+    }
+
+    // Prevent duplicate initialization (React strict mode / re-renders)
+    if (canvasInitRef.current) {
+      return;
+    }
+
     // If we already have a Fabric instance, reuse it.
     if (fabricCanvasRef.current) {
       setFabricCanvas(fabricCanvasRef.current);
+      canvasInitRef.current = true;
       return;
     }
 
     isMountedRef.current = true;
+    canvasInitRef.current = true;
     const container = containerRef.current;
 
     let canvas: FabricCanvas;
@@ -514,35 +559,21 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         resizeHandlerRef.current = null;
       }
       
-      // Clean up canvas if it exists
+      // Clean up canvas listeners but keep Fabric instance for reuse.
       const canvasToCleanup = fabricCanvasRef.current;
       if (canvasToCleanup) {
         try {
-          // Remove all event listeners
           canvasToCleanup.off();
-          // Clear objects
-          canvasToCleanup.clear();
         } catch (e) {
-          // Canvas might already be cleaned up
+          // Ignore cleanup errors
         }
       }
-      
-      // Remove Fabric's reference from the canvas element
-      if (canvasRef.current) {
-        try {
-          delete (canvasRef.current as any).__canvas;
-          delete (canvasRef.current as any).fabric;
-        } catch (e) {
-          // Ignore
-        }
-      }
-      
+
       // Clear refs immediately to prevent any further access
       fabricCanvasRef.current = null;
       setFabricCanvas(null);
+      canvasInitRef.current = false;
     };
-    // Depend on diagramId - when it changes, React remounts canvas (via key prop) and this effect re-runs
-    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
   // Selection events and toolbar positioning (separate from canvas init so updateToolbarPosition is available)
@@ -846,8 +877,44 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
         const group = util.groupSVGElements(objects, options);
         fabricCanvas.clear();
+
+        // Fit the diagram to the canvas with padding
+        const canvasWidth = fabricCanvas.getWidth();
+        const canvasHeight = fabricCanvas.getHeight();
+        const bounds = group.getBoundingRect(true, true);
+        const padding = 60;
+        const scaleX = (canvasWidth - padding * 2) / bounds.width;
+        const scaleY = (canvasHeight - padding * 2) / bounds.height;
+        const scale = Math.min(scaleX, scaleY, 1);
+
+        group.set({
+          scaleX: scale,
+          scaleY: scale,
+          selectable: true,
+          evented: true,
+          originX: "center",
+          originY: "center",
+        });
+
+        // Reset zoom for a consistent baseline
+        fabricCanvas.setZoom(1);
+        setZoom(100);
+
+        // Add, center, then ungroup into selectable objects
         fabricCanvas.add(group);
         fabricCanvas.centerObject(group);
+        group.setCoords();
+
+        if (typeof (group as any).toActiveSelection === "function") {
+          (group as any).toActiveSelection();
+          fabricCanvas.discardActiveObject();
+        }
+
+        // Ensure objects are selectable/evented
+        fabricCanvas.getObjects().forEach((obj) => {
+          obj.set({ selectable: true, evented: true });
+        });
+
         fabricCanvas.renderAll();
 
         // Hide Mermaid overlay and mark as loaded to canvas
@@ -2330,12 +2397,29 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       </div>
 
       {/* Floating editor controls (Creately-style) */}
-      <div className="absolute left-4 top-4 z-30 flex items-center gap-1 rounded-md border border-border bg-background/90 p-1 shadow-sm">
-        <SidebarTrigger className="h-7 w-7" />
+      <div
+        className="absolute z-30 flex items-center gap-1.5 rounded-full border border-border/70 bg-background/80 px-2 py-1 shadow-lg backdrop-blur"
+        style={{ left: floatingToolbarPos.x, top: floatingToolbarPos.y }}
+      >
+        <button
+          type="button"
+          className="h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center cursor-grab active:cursor-grabbing"
+          title="Drag toolbar"
+          onMouseDown={(event) => {
+            setIsDraggingToolbar(true);
+            dragOffsetRef.current = {
+              x: event.clientX - floatingToolbarPos.x,
+              y: event.clientY - floatingToolbarPos.y,
+            };
+          }}
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </button>
+        <div className="h-5 w-px bg-border/70" />
         <Button
           variant={showShapesPanel ? "secondary" : "ghost"}
           size="icon"
-          className="h-7 w-7"
+          className="h-8 w-8 rounded-full hover:bg-muted"
           onClick={() => setShowShapesPanel(!showShapesPanel)}
           title={showShapesPanel ? "Hide tools" : "Show tools"}
         >
@@ -2344,7 +2428,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         <Button
           variant={showLayers ? "secondary" : "ghost"}
           size="icon"
-          className="h-7 w-7"
+          className="h-8 w-8 rounded-full hover:bg-muted"
           onClick={() => setShowLayers(!showLayers)}
           title={showLayers ? "Hide layers" : "Show layers"}
         >
@@ -2353,11 +2437,33 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         <Button
           variant={showHistory ? "secondary" : "ghost"}
           size="icon"
-          className="h-7 w-7"
+          className="h-8 w-8 rounded-full hover:bg-muted"
           onClick={() => setShowHistory(!showHistory)}
           title={showHistory ? "Hide history" : "Show history"}
         >
           <History className="h-4 w-4" />
+        </Button>
+        <div className="h-5 w-px bg-border/70" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-full hover:bg-muted"
+          onClick={() => handleZoom("out")}
+          title="Zoom out"
+        >
+          <ZoomOut className="h-4 w-4" />
+        </Button>
+        <div className="min-w-[42px] text-xs font-medium text-muted-foreground text-center">
+          {zoom}%
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-full hover:bg-muted"
+          onClick={() => handleZoom("in")}
+          title="Zoom in"
+        >
+          <ZoomIn className="h-4 w-4" />
         </Button>
       </div>
 
@@ -2420,10 +2526,9 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           ref={containerRef}
           className="flex-1 relative min-h-0"
           style={{
-            backgroundColor: "#ebe8e4",
+            backgroundColor: "#f8f7f3",
             backgroundImage: `
-              linear-gradient(to right, #d4cfc9 0.5px, transparent 0.5px),
-              linear-gradient(to bottom, #d4cfc9 0.5px, transparent 0.5px)
+              radial-gradient(#d7d2cb 0.6px, transparent 0.6px)
             `,
             backgroundSize: "20px 20px",
           }}
