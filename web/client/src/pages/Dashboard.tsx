@@ -101,7 +101,7 @@ const Dashboard = () => {
           (a, b) =>
             new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
         )
-        .slice(0, 12), // Show up to 12 recent items in the Recent view
+        .slice(0, 4), // Show up to 4 recent items in the Recent view
     [diagramsInScope],
   );
 

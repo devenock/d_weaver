@@ -93,7 +93,7 @@ import type { ApiUser } from "@/lib/auth-api";
 import { getDiagram, createDiagram, updateDiagram, uploadDiagramImage, listComments, addComment } from "@/lib/diagram-api";
 import { getApiErrorMessage } from "@/lib/api";
 import type { CommentResponse } from "@/lib/api-types";
-import { Canvas as FabricCanvas, Rect, Circle, Textbox, Polygon, Path, FabricObject, Group as FabricGroup, FabricImage, ActiveSelection, loadSVGFromString, util } from "fabric";
+import { Canvas as FabricCanvas, Rect, Circle, Textbox, Polygon, Path, FabricObject, Group as FabricGroup, FabricImage, ActiveSelection, loadSVGFromString, util, Point } from "fabric";
 import { LayersPanel } from "./editor/LayersPanel";
 import { AlignmentTools } from "./editor/AlignmentTools";
 import { HistoryPanel } from "./editor/HistoryPanel";
@@ -203,8 +203,8 @@ const FONT_FAMILIES = [
 
 export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, workspaceId, onRequestNew }: EmbeddedEditorProps) {
   const { getAccessToken } = useAuth();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricCanvasRef = useRef<FabricCanvas | null>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
   const [activeTool, setActiveTool] = useState<Tool>("select");
@@ -349,6 +349,19 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   // Mermaid diagram (when content is mermaid code, not Fabric JSON)
   const [mermaidContent, setMermaidContent] = useState<string | null>(null);
 
+  // Toggle canvas interactivity when Mermaid overlay is shown
+  useEffect(() => {
+    const el = canvasElRef.current;
+    if (!el) return;
+    if (mermaidContent) {
+      el.style.opacity = "0";
+      el.style.pointerEvents = "none";
+    } else {
+      el.style.opacity = "1";
+      el.style.pointerEvents = "auto";
+    }
+  }, [mermaidContent]);
+
   // Reset state when diagramId changes to a different diagram
   useEffect(() => {
     // Only reset if diagramId changed and it's not the same as currentDiagramId
@@ -367,7 +380,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         setHasUnsavedChanges(false);
         setCurrentDiagramId(null);
         // Clear canvas for new diagram safely
-        if (fabricCanvas && canvasRef.current) {
+        if (fabricCanvas) {
           try {
             fabricCanvas.clear();
             fabricCanvas.renderAll();
@@ -391,99 +404,41 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   // Track if component is mounted to prevent operations after unmount
   const isMountedRef = useRef(true);
   const resizeHandlerRef = useRef<(() => void) | null>(null);
-  const canvasInitRef = useRef(false);
-  // Initialize canvas once and reuse it across diagram switches.
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  // Initialize canvas once and fully dispose on unmount.
   useEffect(() => {
-    if (!canvasRef.current || !containerRef.current) return;
+    if (!containerRef.current) return;
 
-    const canvasElement = canvasRef.current;
-    const existingCanvas = (canvasElement as any).__canvas as FabricCanvas | undefined;
-
-    // If this element was already initialized, reuse the existing Fabric instance.
-    if (canvasElement.dataset.fabricInit === "true") {
-      if (existingCanvas) {
-        fabricCanvasRef.current = existingCanvas;
-        setFabricCanvas(existingCanvas);
-      }
-      return;
-    }
-
-    // If Fabric already initialized on this element, reuse it.
-    if (existingCanvas) {
-      fabricCanvasRef.current = existingCanvas;
-      setFabricCanvas(existingCanvas);
-      canvasInitRef.current = true;
-      return;
-    }
-
-    // Prevent duplicate initialization (React strict mode / re-renders)
-    if (canvasInitRef.current) {
-      return;
-    }
-
-    // If we already have a Fabric instance, reuse it.
-    if (fabricCanvasRef.current) {
-      setFabricCanvas(fabricCanvasRef.current);
-      canvasInitRef.current = true;
-      return;
-    }
-
-    isMountedRef.current = true;
-    canvasInitRef.current = true;
-    canvasElement.dataset.fabricInit = "true";
     const container = containerRef.current;
+    isMountedRef.current = true;
 
-    let canvas: FabricCanvas;
-    try {
-      canvas = new FabricCanvas(canvasRef.current, {
-        width: container.clientWidth,
-        height: container.clientHeight,
-        backgroundColor: "transparent",
-        selection: true,
-        preserveObjectStacking: true,
-      });
-    } catch (error: any) {
-      console.error("Fabric initialization failed:", error);
-      canvasElement.dataset.fabricInit = "false";
-      return;
-    }
+    const canvasElement = document.createElement("canvas");
+    canvasElement.className = "absolute inset-0";
+    canvasElement.tabIndex = 0;
+    container.appendChild(canvasElement);
+    canvasElRef.current = canvasElement;
 
-    fabricCanvasRef.current = canvas;
-    setupCanvas(canvas);
-    
     function setupCanvas(canvas: FabricCanvas) {
-      if (!canvasRef.current || !containerRef.current) return;
+      if (!containerRef.current) return;
       const container = containerRef.current;
 
-      // Completely disable Fabric's selection UI - override rendering to prevent any selection box
-      canvas.selection = false;
+      // Hide Fabric's selection UI but keep interactivity enabled.
+      canvas.selection = true;
       canvas.selectionColor = "transparent";
       canvas.selectionBorderColor = "transparent";
       canvas.selectionLineWidth = 0;
-      
+
       // Override renderSelection to do nothing - prevents Fabric from drawing selection box
-      const originalRenderSelection = canvas.renderSelection;
       canvas.renderSelection = () => {
         // Do nothing - we render our own selection overlay
       };
-      
+
       // Also override _renderSelection (private method) if it exists
       if ((canvas as any)._renderSelection) {
         (canvas as any)._renderSelection = () => {
           // Do nothing
         };
       }
-      
-      // Prevent selection rendering on every renderAll
-      const originalRenderAll = canvas.renderAll.bind(canvas);
-      canvas.renderAll = function(...args: any[]) {
-        const result = originalRenderAll(...args);
-        // Ensure selection is not rendered even if something tries to render it
-        if (this.selection) {
-          this.selection = false;
-        }
-        return result;
-      };
 
       FabricObject.prototype.hasBorders = false;
       FabricObject.prototype.hasControls = false;
@@ -491,19 +446,21 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       FabricObject.prototype.selectable = true;
       FabricObject.prototype.evented = true;
 
-      // Grid is drawn on the container via CSS so shapes always render on top
-
       const handleResize = () => {
         if (!isMountedRef.current || !canvas) return;
-        canvas.setDimensions({
-          width: container.clientWidth,
-          height: container.clientHeight,
-        });
-        canvas.renderAll();
+        const width = Math.max(container.clientWidth, 1);
+        const height = Math.max(container.clientHeight, 1);
+        canvas.setDimensions({ width, height });
+        canvas.requestRenderAll();
       };
 
       window.addEventListener("resize", handleResize);
       resizeHandlerRef.current = handleResize;
+      if (typeof ResizeObserver !== "undefined") {
+        resizeObserverRef.current?.disconnect();
+        resizeObserverRef.current = new ResizeObserver(() => handleResize());
+        resizeObserverRef.current.observe(container);
+      }
 
       // History tracking
       const initialState = JSON.stringify(canvas.toJSON());
@@ -547,46 +504,65 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
       canvas.on("mouse:dblclick", handleDblClick);
 
       setFabricCanvas(canvas);
-
-      canvas.renderAll();
+      canvas.requestRenderAll();
 
       setTimeout(() => {
         if (containerRef.current && isMountedRef.current) {
           containerRef.current.focus();
         }
         if (canvas && isMountedRef.current) {
-          canvas.renderAll();
+          handleResize();
         }
       }, 50);
     }
 
+    let canvas: FabricCanvas | null = null;
+    try {
+      canvas = new FabricCanvas(canvasElement, {
+        width: Math.max(container.clientWidth, 1),
+        height: Math.max(container.clientHeight, 1),
+        backgroundColor: "transparent",
+        selection: true,
+        preserveObjectStacking: true,
+      });
+    } catch (error: any) {
+      console.error("Fabric initialization failed:", error);
+    }
+
+    if (canvas) {
+      fabricCanvasRef.current = canvas;
+      setupCanvas(canvas);
+    }
+
     return () => {
-      // Mark as unmounted immediately
       isMountedRef.current = false;
-      
-      // Clean up resize listener
+
       if (resizeHandlerRef.current) {
         window.removeEventListener("resize", resizeHandlerRef.current);
         resizeHandlerRef.current = null;
       }
-      
-      // Clean up canvas listeners but keep Fabric instance for reuse.
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+        resizeObserverRef.current = null;
+      }
+
       const canvasToCleanup = fabricCanvasRef.current;
       if (canvasToCleanup) {
         try {
           canvasToCleanup.off();
-        } catch (e) {
-          // Ignore cleanup errors
+          canvasToCleanup.dispose();
+        } catch {
+          // ignore cleanup errors
         }
       }
 
-      // Clear refs immediately to prevent any further access
       fabricCanvasRef.current = null;
       setFabricCanvas(null);
-      canvasInitRef.current = false;
-      if (canvasRef.current) {
-        canvasRef.current.dataset.fabricInit = "false";
+
+      if (canvasElRef.current?.parentNode) {
+        canvasElRef.current.parentNode.removeChild(canvasElRef.current);
       }
+      canvasElRef.current = null;
     };
   }, []);
 
@@ -693,6 +669,10 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           fabricCanvas.clear();
           fabricCanvas.renderAll();
         }
+        setMermaidContent(null);
+        setMermaidSvg(null);
+        setMermaidError(null);
+        setMermaidLoadedToCanvas(false);
         return;
       }
       
@@ -839,6 +819,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         startOnLoad: false, 
         securityLevel: "loose",
         theme: "base",
+        flowchart: { htmlLabels: false },
+        sequence: { htmlLabels: false },
         themeVariables: {
           primaryColor: "#6366f1",
           primaryTextColor: "#fff",
@@ -890,6 +872,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         if (!objects || objects.length === 0 || cancelled) return;
 
         const group = util.groupSVGElements(objects, options);
+        if (!group) return;
+
         fabricCanvas.clear();
 
         // Fit the diagram to the canvas with padding
@@ -897,8 +881,8 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         const canvasHeight = fabricCanvas.getHeight();
         const bounds = group.getBoundingRect(true, true);
         const padding = 60;
-        const scaleX = (canvasWidth - padding * 2) / bounds.width;
-        const scaleY = (canvasHeight - padding * 2) / bounds.height;
+        const scaleX = bounds.width > 0 ? (canvasWidth - padding * 2) / bounds.width : 1;
+        const scaleY = bounds.height > 0 ? (canvasHeight - padding * 2) / bounds.height : 1;
         const scale = Math.min(scaleX, scaleY, 1);
 
         group.set({
@@ -908,34 +892,43 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           evented: true,
           originX: "center",
           originY: "center",
+          subTargetCheck: true,
+          interactive: true,
         });
 
         // Reset zoom for a consistent baseline
         fabricCanvas.setZoom(1);
         setZoom(100);
 
-        // Add, center, then ungroup into selectable objects
+        // Add and center the group
         fabricCanvas.add(group);
         fabricCanvas.centerObject(group);
         group.setCoords();
 
+        // Try to ungroup into selectable objects
         if (typeof (group as any).toActiveSelection === "function") {
+          fabricCanvas.setActiveObject(group);
           (group as any).toActiveSelection();
           fabricCanvas.discardActiveObject();
         }
 
-        // Ensure objects are selectable/evented
+        // Ensure objects are selectable/evented and text is visible
         fabricCanvas.getObjects().forEach((obj) => {
           obj.set({ selectable: true, evented: true });
+          if ("text" in obj && typeof (obj as any).text === "string") {
+            obj.set({ fill: "#1f2937", fontFamily: "Inter, sans-serif" });
+          }
         });
 
-        fabricCanvas.renderAll();
+        fabricCanvas.requestRenderAll();
 
         // Hide Mermaid overlay and mark as loaded to canvas
         setMermaidLoadedToCanvas(true);
         setMermaidContent(null);
       } catch (error) {
         console.error("Failed to load Mermaid SVG into canvas:", error);
+        toast.error("Could not convert this template to editable objects.");
+        setMermaidContent(null);
       }
     };
 
@@ -1940,8 +1933,15 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
     const newZoom = direction === "in" ? Math.min(zoom + 10, 200) : Math.max(zoom - 10, 50);
     setZoom(newZoom);
-    fabricCanvas.setZoom(newZoom / 100);
-    fabricCanvas.renderAll();
+    const center = fabricCanvas.getCenter();
+    const zoomPoint = new Point(center.left, center.top);
+    fabricCanvas.zoomToPoint(zoomPoint, newZoom / 100);
+    fabricCanvas.requestRenderAll();
+
+    const active = fabricCanvas.getActiveObject();
+    if (active) {
+      updateSelectionOverlays(active);
+    }
   };
 
   const handleSave = async () => {
@@ -2550,12 +2550,6 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           onDrop={handleDrop}
           tabIndex={0}
         >
-          <canvas
-            ref={canvasRef}
-            className={`absolute inset-0 ${mermaidContent ? "opacity-0 pointer-events-none" : ""}`}
-            tabIndex={0}
-          />
-
           {mermaidContent && (
             <div
               ref={mermaidContainerRef}
