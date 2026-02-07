@@ -9,6 +9,7 @@ import { DashboardContent } from "@/components/dashboard/DashboardContent";
 import { DashboardBreadcrumb } from "@/components/dashboard/DashboardBreadcrumb";
 import { EmbeddedEditor } from "@/components/dashboard/EmbeddedEditor";
 import { EmbeddedWhiteboard } from "@/components/dashboard/EmbeddedWhiteboard";
+import { EditorErrorBoundary } from "@/components/dashboard/EditorErrorBoundary";
 import { useWorkspaces } from "@/hooks/useWorkspaces";
 import { listDiagrams, createDiagram } from "@/lib/diagram-api";
 import type { DiagramResponse } from "@/lib/api-types";
@@ -34,6 +35,7 @@ const Dashboard = () => {
   const [inviteTeamOpen, setInviteTeamOpen] = useState(false);
   const [templatesOpen, setTemplatesOpen] = useState(false);
   const [aiGenerateOpen, setAIGenerateOpen] = useState(false);
+  const [sidebarOpen, setSidebarOpen] = useState(true);
 
   const {
     workspaces,
@@ -51,6 +53,20 @@ const Dashboard = () => {
     }
     try {
       const list = await listDiagrams(token);
+      // Debug: Check if diagrams have content
+      if (list.length > 0) {
+        console.log("Loaded diagrams:", list.length);
+        list.forEach((d, i) => {
+          if (i < 3) { // Log first 3 for debugging
+            console.log(`Diagram ${i + 1}: "${d.title}"`, {
+              hasContent: !!d.content,
+              contentLength: d.content?.length || 0,
+              contentPreview: d.content?.substring(0, 50) || "none",
+              hasImageUrl: !!d.image_url,
+            });
+          }
+        });
+      }
       setDiagrams(list);
     } catch (err) {
       toast({ title: "Error", description: getApiErrorMessage(err, "Failed to load diagrams"), variant: "destructive" });
@@ -85,7 +101,7 @@ const Dashboard = () => {
           (a, b) =>
             new Date(b.updated_at).getTime() - new Date(a.updated_at).getTime(),
         )
-        .slice(0, 12), // Show up to 12 recent items in the Recent view
+        .slice(0, 4), // Show up to 4 recent items in the Recent view
     [diagramsInScope],
   );
 
@@ -123,6 +139,11 @@ const Dashboard = () => {
       navigate(location.pathname, { replace: true, state: {} });
     }
   }, [selectWorkspaceIdFromState, workspaces, selectWorkspace, navigate, location.pathname]);
+
+  useEffect(() => {
+    // Collapse sidebar in editor/whiteboard, expand on dashboard
+    setSidebarOpen(viewMode === "dashboard");
+  }, [viewMode]);
 
   const handleDiagramClick = (diagram: DiagramResponse) => {
     setSelectedDiagramId(diagram.id);
@@ -217,7 +238,7 @@ const Dashboard = () => {
   }
 
   return (
-    <SidebarProvider>
+    <SidebarProvider open={sidebarOpen} onOpenChange={setSidebarOpen}>
       <div className="min-h-screen flex w-full">
         <AppSidebar
           workspaces={workspaces}
@@ -289,14 +310,16 @@ const Dashboard = () => {
           )}
 
           {viewMode === "editor" && (
-            <EmbeddedEditor
-              diagramId={selectedDiagramId}
-              user={user}
-              onClose={handleCloseEditor}
-              onSave={loadDiagrams}
-              workspaceId={currentWorkspace?.id}
-              onRequestNew={handleNewDiagram}
-            />
+            <EditorErrorBoundary>
+              <EmbeddedEditor
+                diagramId={selectedDiagramId}
+                user={user}
+                onClose={handleCloseEditor}
+                onSave={loadDiagrams}
+                workspaceId={currentWorkspace?.id}
+                onRequestNew={handleNewDiagram}
+              />
+            </EditorErrorBoundary>
           )}
 
           {viewMode === "whiteboard" && (

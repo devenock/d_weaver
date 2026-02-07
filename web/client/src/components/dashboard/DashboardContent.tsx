@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useEffect } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Plus, Download, Share2, Trash2, Eye, Edit, MoreHorizontal, Clock } from "lucide-react";
@@ -22,6 +22,170 @@ import type { DiagramResponse } from "@/lib/api-types";
 import { deleteDiagram, updateDiagram } from "@/lib/diagram-api";
 import { resolveImageUrl } from "@/lib/api";
 import { getApiErrorMessage } from "@/lib/api";
+import mermaid from "mermaid";
+
+// DiagramPreview component - moved outside to prevent recreation on every render
+function DiagramPreview({ diagram }: { diagram: DiagramResponse }) {
+  const [mermaidSvg, setMermaidSvg] = useState<string | null>(null);
+  const [hasError, setHasError] = useState(false);
+
+  useEffect(() => {
+    // Check if we have an image URL first
+    const imageUrl = resolveImageUrl(diagram.image_url);
+    if (imageUrl) {
+      setMermaidSvg(null);
+      setHasError(false);
+      return;
+    }
+
+    // Check if content looks like mermaid code
+    const content = (diagram.content || "").trim();
+    
+    if (!content) {
+      setMermaidSvg(null);
+      setHasError(false);
+      return;
+    }
+
+    // Check if content is JSON (Fabric canvas) - if so, skip mermaid rendering
+    let isJson = false;
+    try {
+      const parsed = JSON.parse(content);
+      if (parsed && typeof parsed === 'object' && (parsed.objects !== undefined || parsed.version !== undefined)) {
+        isJson = true;
+      }
+    } catch {
+      // Not JSON, continue
+    }
+
+    if (isJson) {
+      setMermaidSvg(null);
+      setHasError(false);
+      return;
+    }
+
+    // Mermaid detection - check for mermaid-specific patterns
+    const isMermaidCode = 
+      content.startsWith('graph ') ||
+      content.startsWith('flowchart ') ||
+      content.startsWith('sequenceDiagram') ||
+      content.startsWith('erDiagram') ||
+      content.startsWith('gantt') ||
+      content.startsWith('stateDiagram') ||
+      content.startsWith('stateDiagram-v2') ||
+      content.startsWith('C4Context') ||
+      content.startsWith('mindmap') ||
+      content.includes('-->') ||
+      content.includes('->>') ||
+      (content.includes('subgraph') && content.includes('end'));
+
+    console.log(`[Preview] Checking "${diagram.title}":`, {
+      hasContent: !!content,
+      contentLength: content.length,
+      isMermaid: isMermaidCode,
+      contentStart: content.substring(0, 50)
+    });
+
+    if (!isMermaidCode) {
+      console.log(`[Preview] "${diagram.title}" is not mermaid code, skipping`);
+      setMermaidSvg(null);
+      setHasError(false);
+      return;
+    }
+
+    console.log(`[Preview] Rendering mermaid for "${diagram.title}"`);
+    
+    // Render mermaid (simplified like TemplatePreview)
+    const renderId = `preview-${diagram.id}-${Math.random().toString(36).slice(2, 9)}`;
+    
+    // Initialize mermaid only if needed (check if already initialized)
+    try {
+      mermaid.initialize({
+        startOnLoad: false,
+        securityLevel: "loose",
+        theme: "base",
+        themeVariables: {
+          primaryColor: "#6366f1",
+          primaryTextColor: "#fff",
+          primaryBorderColor: "#4f46e5",
+          lineColor: "#64748b",
+          background: "#f8fafc",
+        },
+      });
+    } catch (e) {
+      // Already initialized, continue
+      console.log(`[Preview] Mermaid already initialized for "${diagram.title}"`);
+    }
+
+    let cancelled = false;
+    mermaid
+      .render(renderId, content)
+      .then(({ svg }) => {
+        if (!cancelled) {
+          console.log(`[Preview] Successfully rendered "${diagram.title}"`, { svgLength: svg?.length || 0, svgPreview: svg?.substring(0, 100) });
+          setMermaidSvg(svg);
+          setHasError(false);
+        }
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          console.error(`[Preview] Failed to render mermaid preview for "${diagram.title}":`, err);
+          setHasError(true);
+          setMermaidSvg(null);
+        }
+      });
+    
+    return () => {
+      cancelled = true;
+    };
+  }, [diagram.id, diagram.image_url, diagram.content, diagram.title]);
+
+  // Show image if available
+  const imageUrl = resolveImageUrl(diagram.image_url);
+  if (imageUrl) {
+    return (
+      <img
+        src={imageUrl}
+        alt={diagram.title}
+        className="max-w-full max-h-full object-contain"
+      />
+    );
+  }
+
+  // Show mermaid preview if available
+  if (mermaidSvg && !hasError) {
+    console.log(`[Preview] Rendering SVG for "${diagram.title}"`, { svgLength: mermaidSvg.length });
+    return (
+      <div
+        className="w-full h-full rounded-md bg-[#f8fafc] overflow-hidden flex items-center justify-center p-2 [&_svg]:max-w-full [&_svg]:max-h-full [&_svg]:h-auto [&_svg]:w-auto [&_svg]:object-contain"
+        dangerouslySetInnerHTML={{ __html: mermaidSvg }}
+      />
+    );
+  }
+
+  if (hasError) {
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <p className="text-xs text-muted-foreground">Preview error</p>
+      </div>
+    );
+  }
+
+  if (!mermaidSvg && (diagram.content || "").trim().length > 0) {
+    // Content exists but SVG not ready yet
+    return (
+      <div className="w-full h-full flex items-center justify-center">
+        <p className="text-xs text-muted-foreground animate-pulse">Loading...</p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="w-full h-full flex items-center justify-center">
+      <p className="text-xs text-muted-foreground">No preview</p>
+    </div>
+  );
+}
 
 interface DashboardContentProps {
   accessToken: string;
@@ -140,6 +304,7 @@ export function DashboardContent({
     );
   }
 
+
   const renderDiagramGrid = (diagramsToRender: DiagramResponse[]) => (
     <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4">
       {diagramsToRender.map((diagram) => (
@@ -201,15 +366,7 @@ export function DashboardContent({
               </CardHeader>
               <CardContent className="p-4 pt-0">
                 <div className="bg-muted rounded-md h-32 overflow-hidden flex items-center justify-center">
-                  {resolveImageUrl(diagram.image_url) ? (
-                    <img
-                      src={resolveImageUrl(diagram.image_url)!}
-                      alt={diagram.title}
-                      className="max-w-full max-h-full object-contain"
-                    />
-                  ) : (
-                    <p className="text-xs text-muted-foreground">No preview</p>
-                  )}
+                  <DiagramPreview key={`preview-${diagram.id}`} diagram={diagram} />
                 </div>
               </CardContent>
             </Card>

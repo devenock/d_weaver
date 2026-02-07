@@ -82,6 +82,7 @@ import {
   PenTool as PenToolIcon,
   Smile,
   MessageSquare as CommentIcon,
+  GripVertical,
   Sparkles,
   MoreVertical,
   Plus,
@@ -92,7 +93,7 @@ import type { ApiUser } from "@/lib/auth-api";
 import { getDiagram, createDiagram, updateDiagram, uploadDiagramImage, listComments, addComment } from "@/lib/diagram-api";
 import { getApiErrorMessage } from "@/lib/api";
 import type { CommentResponse } from "@/lib/api-types";
-import { Canvas as FabricCanvas, Rect, Circle, Textbox, Polygon, Path, FabricObject, Group as FabricGroup, FabricImage, ActiveSelection } from "fabric";
+import { Canvas as FabricCanvas, Rect, Circle, Textbox, Polygon, Path, FabricObject, Group as FabricGroup, FabricImage, ActiveSelection, loadSVGFromString, util, Point, Shadow } from "fabric";
 import { LayersPanel } from "./editor/LayersPanel";
 import { AlignmentTools } from "./editor/AlignmentTools";
 import { HistoryPanel } from "./editor/HistoryPanel";
@@ -202,8 +203,8 @@ const FONT_FAMILIES = [
 
 export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, workspaceId, onRequestNew }: EmbeddedEditorProps) {
   const { getAccessToken } = useAuth();
-  const canvasRef = useRef<HTMLCanvasElement>(null);
   const containerRef = useRef<HTMLDivElement>(null);
+  const canvasElRef = useRef<HTMLCanvasElement | null>(null);
   const fabricCanvasRef = useRef<FabricCanvas | null>(null);
   const [fabricCanvas, setFabricCanvas] = useState<FabricCanvas | null>(null);
   const [activeTool, setActiveTool] = useState<Tool>("select");
@@ -215,13 +216,40 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   const [showProperties, setShowProperties] = useState(false);
   const [showLayers, setShowLayers] = useState(false);
   const [showHistory, setShowHistory] = useState(false);
-  const [showShapesPanel, setShowShapesPanel] = useState(true);
+  const [showShapesPanel, setShowShapesPanel] = useState(false);
+  const [floatingToolbarPos, setFloatingToolbarPos] = useState({ x: 16, y: 16 });
+  const [isDraggingToolbar, setIsDraggingToolbar] = useState(false);
+  const dragOffsetRef = useRef({ x: 0, y: 0 });
   const [zoom, setZoom] = useState(100);
   const [history, setHistory] = useState<string[]>([]);
   const [historyStep, setHistoryStep] = useState(0);
   const historyStepRef = useRef(0);
   const [_hasUnsavedChanges, setHasUnsavedChanges] = useState(false);
   const [showUnsavedDialog, setShowUnsavedDialog] = useState(false);
+  const [mermaidLoadedToCanvas, setMermaidLoadedToCanvas] = useState(false);
+
+  useEffect(() => {
+    if (!isDraggingToolbar) return;
+
+    const handleMove = (event: MouseEvent) => {
+      setFloatingToolbarPos({
+        x: Math.max(8, event.clientX - dragOffsetRef.current.x),
+        y: Math.max(8, event.clientY - dragOffsetRef.current.y),
+      });
+    };
+
+    const handleUp = () => {
+      setIsDraggingToolbar(false);
+    };
+
+    window.addEventListener("mousemove", handleMove);
+    window.addEventListener("mouseup", handleUp);
+
+    return () => {
+      window.removeEventListener("mousemove", handleMove);
+      window.removeEventListener("mouseup", handleUp);
+    };
+  }, [isDraggingToolbar]);
 
   // Selection & Properties
   const [selectedObject, setSelectedObject] = useState<FabricObject | null>(null);
@@ -320,135 +348,265 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
   // Mermaid diagram (when content is mermaid code, not Fabric JSON)
   const [mermaidContent, setMermaidContent] = useState<string | null>(null);
-  const mermaidContainerRef = useRef<HTMLDivElement>(null);
+
+  const hexToRgb = (hex: string) => {
+    const cleaned = hex.replace("#", "");
+    if (cleaned.length !== 6) return null;
+    const num = parseInt(cleaned, 16);
+    return {
+      r: (num >> 16) & 255,
+      g: (num >> 8) & 255,
+      b: num & 255,
+    };
+  };
+
+  const darkenHex = (hex: string, amount: number) => {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return "#1E40AF";
+    const clamp = (v: number) => Math.max(0, Math.min(255, v));
+    const r = clamp(rgb.r - amount);
+    const g = clamp(rgb.g - amount);
+    const b = clamp(rgb.b - amount);
+    return `#${[r, g, b].map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+  };
+
+  const getContrastTextColor = (hex: string) => {
+    const rgb = hexToRgb(hex);
+    if (!rgb) return "#0f172a";
+    const luminance = (0.2126 * rgb.r + 0.7152 * rgb.g + 0.0722 * rgb.b) / 255;
+    return luminance > 0.6 ? "#0f172a" : "#ffffff";
+  };
+
+  const createCenteredLabel = (label: string, width: number, height: number, fontSize: number, color: string) =>
+    new Textbox(label, {
+      fontSize,
+      fill: getContrastTextColor(color),
+      fontFamily: "Inter, sans-serif",
+      fontWeight: "bold",
+      originX: "center",
+      originY: "center",
+      textAlign: "center",
+      width: Math.max(width - 20, 60),
+      left: width / 2,
+      top: height / 2,
+    });
+
+  // Toggle canvas interactivity when Mermaid overlay is shown
+  useEffect(() => {
+    const el = canvasElRef.current;
+    if (!el) return;
+    if (mermaidContent) {
+      el.style.opacity = "0";
+      el.style.pointerEvents = "none";
+    } else {
+      el.style.opacity = "1";
+      el.style.pointerEvents = "auto";
+    }
+  }, [mermaidContent]);
+
+  // Reset state when diagramId changes to a different diagram
+  useEffect(() => {
+    // Only reset if diagramId changed and it's not the same as currentDiagramId
+    // This prevents resetting when loading the same diagram
+    if (diagramId !== currentDiagramId) {
+      // Clear mermaid state immediately - React will handle DOM cleanup automatically
+      setMermaidContent(null);
+      setMermaidSvg(null);
+      setMermaidError(null);
+      setMermaidLoadedToCanvas(false);
+      mermaidCancelRef.current = true;
+      
+      if (diagramId === null) {
+        // Switching to new diagram (diagramId is null)
+        setDiagramTitle("Untitled Diagram");
+        setHasUnsavedChanges(false);
+        setCurrentDiagramId(null);
+        // Clear canvas for new diagram safely
+        if (fabricCanvas) {
+          try {
+            fabricCanvas.clear();
+            fabricCanvas.renderAll();
+          } catch (e) {
+            console.warn("Error clearing canvas:", e);
+          }
+        }
+      } else {
+        // Switching to a different diagram - reset title (will be set by loadDiagram)
+        setDiagramTitle("Untitled Diagram");
+        setHasUnsavedChanges(false);
+      }
+    }
+  }, [diagramId, currentDiagramId, fabricCanvas]);
 
   // Track changes
   const markChanged = useCallback(() => {
     setHasUnsavedChanges(true);
   }, []);
 
-  // Initialize canvas
+  // Track if component is mounted to prevent operations after unmount
+  const isMountedRef = useRef(true);
+  const resizeHandlerRef = useRef<(() => void) | null>(null);
+  const resizeObserverRef = useRef<ResizeObserver | null>(null);
+  // Initialize canvas once and fully dispose on unmount.
   useEffect(() => {
-    if (!canvasRef.current || !containerRef.current) return;
-    if (fabricCanvasRef.current) return;
+    if (!containerRef.current) return;
 
     const container = containerRef.current;
-    const canvas = new FabricCanvas(canvasRef.current, {
-      width: container.clientWidth,
-      height: container.clientHeight,
-      backgroundColor: "transparent",
-      selection: true,
-      preserveObjectStacking: true,
-    });
+    isMountedRef.current = true;
 
-    // Completely disable Fabric's selection UI - override rendering to prevent any selection box
-    canvas.selection = false;
-    canvas.selectionColor = "transparent";
-    canvas.selectionBorderColor = "transparent";
-    canvas.selectionLineWidth = 0;
-    
-    // Override renderSelection to do nothing - prevents Fabric from drawing selection box
-    const originalRenderSelection = canvas.renderSelection;
-    canvas.renderSelection = () => {
-      // Do nothing - we render our own selection overlay
-    };
-    
-    // Also override _renderSelection (private method) if it exists
-    if ((canvas as any)._renderSelection) {
-      (canvas as any)._renderSelection = () => {
-        // Do nothing
+    const canvasElement = document.createElement("canvas");
+    canvasElement.className = "absolute inset-0";
+    canvasElement.tabIndex = 0;
+    container.appendChild(canvasElement);
+    canvasElRef.current = canvasElement;
+
+    function setupCanvas(canvas: FabricCanvas) {
+      if (!containerRef.current) return;
+      const container = containerRef.current;
+
+      // Hide Fabric's selection UI but keep interactivity enabled.
+      canvas.selection = true;
+      canvas.selectionColor = "transparent";
+      canvas.selectionBorderColor = "transparent";
+      canvas.selectionLineWidth = 0;
+
+      // Override renderSelection to do nothing - prevents Fabric from drawing selection box
+      canvas.renderSelection = () => {
+        // Do nothing - we render our own selection overlay
       };
+
+      // Also override _renderSelection (private method) if it exists
+      if ((canvas as any)._renderSelection) {
+        (canvas as any)._renderSelection = () => {
+          // Do nothing
+        };
+      }
+
+      FabricObject.prototype.hasBorders = false;
+      FabricObject.prototype.hasControls = false;
+      FabricObject.prototype.padding = 0;
+      FabricObject.prototype.selectable = true;
+      FabricObject.prototype.evented = true;
+
+      const handleResize = () => {
+        if (!isMountedRef.current || !canvas) return;
+        const width = Math.max(container.clientWidth, 1);
+        const height = Math.max(container.clientHeight, 1);
+        canvas.setDimensions({ width, height });
+        canvas.requestRenderAll();
+      };
+
+      window.addEventListener("resize", handleResize);
+      resizeHandlerRef.current = handleResize;
+      if (typeof ResizeObserver !== "undefined") {
+        resizeObserverRef.current?.disconnect();
+        resizeObserverRef.current = new ResizeObserver(() => handleResize());
+        resizeObserverRef.current.observe(container);
+      }
+
+      // History tracking
+      const initialState = JSON.stringify(canvas.toJSON());
+      setHistory([initialState]);
+      setHistoryStep(0);
+      historyStepRef.current = 0;
+
+      const saveState = () => {
+        if (!isMountedRef.current || !canvas) return;
+        const json = JSON.stringify(canvas.toJSON());
+        setHistory((prev) => {
+          const newHistory = prev.slice(0, historyStepRef.current + 1);
+          newHistory.push(json);
+          historyStepRef.current = historyStepRef.current + 1;
+          return newHistory;
+        });
+        setHistoryStep(historyStepRef.current);
+        markChanged();
+      };
+
+      canvas.on("object:added", saveState);
+      canvas.on("object:modified", saveState);
+      canvas.on("object:removed", saveState);
+
+      // Double-click on a shape with a label: enter inline editing for the label
+      const handleDblClick = (e: any) => {
+        const target = e.target;
+        if (!target) return;
+        let textObj: Textbox | null = null;
+        if (target instanceof FabricGroup) {
+          const textChild = target.getObjects().find((o) => o instanceof Textbox);
+          textObj = textChild ? (textChild as Textbox) : null;
+        } else if (target instanceof Textbox) {
+          textObj = target;
+        }
+        if (textObj && typeof textObj.enterEditing === "function") {
+          textObj.enterEditing();
+          textObj.hiddenTextarea?.focus();
+        }
+      };
+      canvas.on("mouse:dblclick", handleDblClick);
+
+      setFabricCanvas(canvas);
+      canvas.requestRenderAll();
+
+      setTimeout(() => {
+        if (containerRef.current && isMountedRef.current) {
+          containerRef.current.focus();
+        }
+        if (canvas && isMountedRef.current) {
+          handleResize();
+        }
+      }, 50);
     }
-    
-    // Prevent selection rendering on every renderAll
-    const originalRenderAll = canvas.renderAll.bind(canvas);
-    canvas.renderAll = function(...args: any[]) {
-      const result = originalRenderAll(...args);
-      // Ensure selection is not rendered even if something tries to render it
-      if (this.selection) {
-        this.selection = false;
-      }
-      return result;
-    };
 
-    FabricObject.prototype.hasBorders = false;
-    FabricObject.prototype.hasControls = false;
-    FabricObject.prototype.padding = 0;
-    FabricObject.prototype.selectable = true;
-    FabricObject.prototype.evented = true;
-
-    // Grid is drawn on the container via CSS so shapes always render on top
-
-    const handleResize = () => {
-      canvas.setDimensions({
-        width: container.clientWidth,
-        height: container.clientHeight,
+    let canvas: FabricCanvas | null = null;
+    try {
+      canvas = new FabricCanvas(canvasElement, {
+        width: Math.max(container.clientWidth, 1),
+        height: Math.max(container.clientHeight, 1),
+        backgroundColor: "transparent",
+        selection: true,
+        preserveObjectStacking: true,
       });
-      canvas.renderAll();
-    };
+    } catch (error: any) {
+      console.error("Fabric initialization failed:", error);
+    }
 
-    window.addEventListener("resize", handleResize);
-
-    // History tracking
-    const initialState = JSON.stringify(canvas.toJSON());
-    setHistory([initialState]);
-    setHistoryStep(0);
-    historyStepRef.current = 0;
-
-    const saveState = () => {
-      const json = JSON.stringify(canvas.toJSON());
-      setHistory((prev) => {
-        const newHistory = prev.slice(0, historyStepRef.current + 1);
-        newHistory.push(json);
-        historyStepRef.current = historyStepRef.current + 1;
-        return newHistory;
-      });
-      setHistoryStep(historyStepRef.current);
-      markChanged();
-    };
-
-    canvas.on("object:added", saveState);
-    canvas.on("object:modified", saveState);
-    canvas.on("object:removed", saveState);
-
-    // Double-click on a shape with a label: enter inline editing for the label
-    const handleDblClick = (e: any) => {
-      const target = e.target;
-      if (!target) return;
-      let textObj: Textbox | null = null;
-      if (target instanceof FabricGroup) {
-        const textChild = target.getObjects().find((o) => o instanceof Textbox);
-        textObj = textChild ? (textChild as Textbox) : null;
-      } else if (target instanceof Textbox) {
-        textObj = target;
-      }
-      if (textObj && typeof textObj.enterEditing === "function") {
-        textObj.enterEditing();
-        textObj.hiddenTextarea?.focus();
-      }
-    };
-    canvas.on("mouse:dblclick", handleDblClick);
-
-    fabricCanvasRef.current = canvas;
-    setFabricCanvas(canvas);
-
-    canvas.renderAll();
-
-    setTimeout(() => {
-      container.focus();
-      canvas.renderAll();
-    }, 50);
+    if (canvas) {
+      fabricCanvasRef.current = canvas;
+      setupCanvas(canvas);
+    }
 
     return () => {
-      window.removeEventListener("resize", handleResize);
-      canvas.off("object:added", saveState);
-      canvas.off("object:modified", saveState);
-      canvas.off("object:removed", saveState);
-      canvas.off("mouse:dblclick", handleDblClick);
-      canvas.dispose();
+      isMountedRef.current = false;
+
+      if (resizeHandlerRef.current) {
+        window.removeEventListener("resize", resizeHandlerRef.current);
+        resizeHandlerRef.current = null;
+      }
+      if (resizeObserverRef.current) {
+        resizeObserverRef.current.disconnect();
+        resizeObserverRef.current = null;
+      }
+
+      const canvasToCleanup = fabricCanvasRef.current;
+      if (canvasToCleanup) {
+        try {
+          canvasToCleanup.off();
+          canvasToCleanup.dispose();
+        } catch {
+          // ignore cleanup errors
+        }
+      }
+
       fabricCanvasRef.current = null;
+      setFabricCanvas(null);
+
+      if (canvasElRef.current?.parentNode) {
+        canvasElRef.current.parentNode.removeChild(canvasElRef.current);
+      }
+      canvasElRef.current = null;
     };
-  }, [markChanged]);
+  }, []);
 
   // Selection events and toolbar positioning (separate from canvas init so updateToolbarPosition is available)
   useEffect(() => {
@@ -547,7 +705,19 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   // Load existing diagram
   useEffect(() => {
     const loadDiagram = async () => {
-      if (!diagramId || !fabricCanvas) return;
+      if (!diagramId) {
+        // Clear canvas for new diagram
+        if (fabricCanvas) {
+          fabricCanvas.clear();
+          fabricCanvas.renderAll();
+        }
+        setMermaidContent(null);
+        setMermaidSvg(null);
+        setMermaidError(null);
+        setMermaidLoadedToCanvas(false);
+        return;
+      }
+      
       const token = getAccessToken();
       if (!token) return;
 
@@ -557,60 +727,99 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         setCurrentDiagramId(data.id);
         setHasUnsavedChanges(false);
 
-        try {
-          const canvasData = JSON.parse(data.content);
-          setMermaidContent(null);
-          if (canvasData.objects) {
-            await fabricCanvas.loadFromJSON(canvasData, async () => {
-              const objects = fabricCanvas.getObjects();
-              for (const obj of objects) {
-                if (obj.type === 'group') {
-                  const group = obj as FabricGroup;
-                  const groupObjects = group.getObjects();
-                  const updatedObjects: FabricObject[] = [];
-                    
-                  for (const childObj of groupObjects) {
-                    if (childObj.type === 'image') {
-                      const imgObj = childObj as any;
-                      if (imgObj.src && imgObj.src.startsWith('data:image')) {
-                        try {
-                          const img = await FabricImage.fromURL(imgObj.src);
-                          img.set({
-                            left: childObj.left || 0,
-                            top: childObj.top || 0,
-                            scaleX: childObj.scaleX || 1,
-                            scaleY: childObj.scaleY || 1,
-                            originX: childObj.originX || 'left',
-                            originY: childObj.originY || 'top',
-                            selectable: false,
-                            evented: false,
-                          });
-                          updatedObjects.push(img);
-                        } catch (err) {
-                          console.error('Failed to restore image:', err);
+        // Check if content is mermaid code first (before trying to parse as JSON)
+        const trimmed = String(data.content || "").trim();
+        const isMermaidCode = trimmed.length > 0 && (
+          trimmed.startsWith('graph ') ||
+          trimmed.startsWith('flowchart ') ||
+          trimmed.startsWith('sequenceDiagram') ||
+          trimmed.startsWith('erDiagram') ||
+          trimmed.startsWith('gantt') ||
+          trimmed.startsWith('stateDiagram') ||
+          trimmed.startsWith('C4Context') ||
+          trimmed.startsWith('mindmap') ||
+          trimmed.includes('-->') ||
+          trimmed.includes('->>') ||
+          (trimmed.includes('subgraph') && trimmed.includes('end'))
+        );
+
+        if (isMermaidCode) {
+          // Content is mermaid code (e.g. from template or AI)
+          setMermaidContent(trimmed);
+          // Clear canvas when showing mermaid
+          if (fabricCanvas) {
+            fabricCanvas.clear();
+            fabricCanvas.renderAll();
+          }
+        } else {
+          // Try to parse as Fabric canvas JSON
+          try {
+            const canvasData = JSON.parse(data.content);
+            setMermaidContent(null);
+            // Clear canvas first before loading new content
+            if (fabricCanvas) {
+              fabricCanvas.clear();
+              // Only load if we have objects
+              if (canvasData.objects && canvasData.objects.length > 0) {
+                await fabricCanvas.loadFromJSON(canvasData, async () => {
+                  const objects = fabricCanvas.getObjects();
+                  for (const obj of objects) {
+                    if (obj.type === 'group') {
+                      const group = obj as FabricGroup;
+                      const groupObjects = group.getObjects();
+                      const updatedObjects: FabricObject[] = [];
+                        
+                      for (const childObj of groupObjects) {
+                        if (childObj.type === 'image') {
+                          const imgObj = childObj as any;
+                          if (imgObj.src && imgObj.src.startsWith('data:image')) {
+                            try {
+                              const img = await FabricImage.fromURL(imgObj.src);
+                              img.set({
+                                left: childObj.left || 0,
+                                top: childObj.top || 0,
+                                scaleX: childObj.scaleX || 1,
+                                scaleY: childObj.scaleY || 1,
+                                originX: childObj.originX || 'left',
+                                originY: childObj.originY || 'top',
+                                selectable: false,
+                                evented: false,
+                              });
+                              updatedObjects.push(img);
+                            } catch (err) {
+                              console.error('Failed to restore image:', err);
+                              updatedObjects.push(childObj);
+                            }
+                          } else {
+                            updatedObjects.push(childObj);
+                          }
+                        } else {
                           updatedObjects.push(childObj);
                         }
-                      } else {
-                        updatedObjects.push(childObj);
                       }
-                    } else {
-                      updatedObjects.push(childObj);
+                        
+                      if (updatedObjects.length === groupObjects.length) {
+                        group.set('objects', updatedObjects);
+                      }
                     }
                   }
-                    
-                  if (updatedObjects.length === groupObjects.length) {
-                    group.set('objects', updatedObjects);
-                  }
-                }
+                  fabricCanvas.renderAll();
+                });
+              } else {
+                fabricCanvas.renderAll();
               }
-              fabricCanvas.renderAll();
-            });
-          }
-        } catch {
-          // Content is mermaid code (e.g. from template or AI)
-          const trimmed = String(data.content || "").trim();
-          if (trimmed.length > 0) {
-            setMermaidContent(trimmed);
+            }
+          } catch (parseError) {
+            // Not valid JSON, treat as mermaid code if it has content
+            if (trimmed.length > 0) {
+              setMermaidContent(trimmed);
+              if (fabricCanvas) {
+                fabricCanvas.clear();
+                fabricCanvas.renderAll();
+              }
+            } else {
+              setMermaidContent(null);
+            }
           }
         }
       } catch (err) {
@@ -619,29 +828,158 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
     };
 
     loadDiagram();
-  }, [diagramId, fabricCanvas, getAccessToken]);
+  }, [diagramId, getAccessToken, fabricCanvas]);
+
 
   // Render mermaid when content is mermaid code
+  const [mermaidSvg, setMermaidSvg] = useState<string | null>(null);
+  const [mermaidError, setMermaidError] = useState<string | null>(null);
+  const mermaidContainerRef = useRef<HTMLDivElement | null>(null);
+  const mermaidRenderIdRef = useRef<string | null>(null);
+  const mermaidCancelRef = useRef<boolean>(false);
+
   useEffect(() => {
-    if (!mermaidContent || !mermaidContainerRef.current) return;
-    const container = mermaidContainerRef.current;
-    container.innerHTML = "";
+    // Cancel any pending renders
+    mermaidCancelRef.current = true;
+    
+    if (!mermaidContent) {
+      setMermaidSvg(null);
+      setMermaidError(null);
+      mermaidRenderIdRef.current = null;
+      mermaidCancelRef.current = false;
+      return;
+    }
+
+    // Reset cancel flag for new render
+    mermaidCancelRef.current = false;
     const id = `mermaid-editor-${Date.now()}-${Math.random().toString(36).slice(2, 9)}`;
-    mermaid.initialize({ startOnLoad: false, securityLevel: "loose" });
+    mermaidRenderIdRef.current = id;
+    
+    // Initialize mermaid
+    try {
+      mermaid.initialize({ 
+        startOnLoad: false, 
+        securityLevel: "loose",
+        theme: "base",
+        flowchart: { htmlLabels: false },
+        sequence: { htmlLabels: false },
+        themeVariables: {
+          primaryColor: "#6366f1",
+          primaryTextColor: "#fff",
+          primaryBorderColor: "#4f46e5",
+          lineColor: "#64748b",
+          background: "#f8fafc",
+        },
+      });
+    } catch (e) {
+      // Already initialized, continue
+    }
+
     mermaid
       .render(id, mermaidContent)
       .then(({ svg }) => {
-        if (mermaidContainerRef.current) {
-          mermaidContainerRef.current.innerHTML = `<div class="bg-card rounded-xl border shadow-sm p-6 max-w-4xl mx-auto [&_svg]:max-w-full [&_svg]:h-auto">${svg}</div>`;
+        // Only update if this render is still current and not cancelled
+        if (!mermaidCancelRef.current && mermaidRenderIdRef.current === id) {
+          setMermaidSvg(svg);
+          setMermaidError(null);
         }
       })
       .catch((err) => {
         console.error("Mermaid render error:", err);
-        if (mermaidContainerRef.current) {
-          mermaidContainerRef.current.innerHTML = `<div class="p-4 text-sm text-muted-foreground">Could not render diagram. The content may be invalid Mermaid syntax.</div>`;
+        // Only update error if this render is still current and not cancelled
+        if (!mermaidCancelRef.current && mermaidRenderIdRef.current === id) {
+          setMermaidError("Could not render diagram. The content may be invalid Mermaid syntax.");
+          setMermaidSvg(null);
         }
       });
+
+    return () => {
+      // Mark as cancelled and clear state - React will handle DOM cleanup
+      mermaidCancelRef.current = true;
+      setMermaidSvg(null);
+      setMermaidError(null);
+      mermaidRenderIdRef.current = null;
+    };
   }, [mermaidContent]);
+
+  // Convert Mermaid SVG into editable Fabric objects when possible.
+  useEffect(() => {
+    if (!mermaidSvg || !fabricCanvas || mermaidLoadedToCanvas) return;
+
+    let cancelled = false;
+
+    const loadMermaidSvg = async () => {
+      try {
+        const { objects, options } = await loadSVGFromString(mermaidSvg);
+        if (!objects || objects.length === 0 || cancelled) return;
+
+        const group = util.groupSVGElements(objects, options);
+        if (!group) return;
+
+        fabricCanvas.clear();
+
+        // Fit the diagram to the canvas with padding
+        const canvasWidth = fabricCanvas.getWidth();
+        const canvasHeight = fabricCanvas.getHeight();
+        const bounds = group.getBoundingRect(true, true);
+        const padding = 60;
+        const scaleX = bounds.width > 0 ? (canvasWidth - padding * 2) / bounds.width : 1;
+        const scaleY = bounds.height > 0 ? (canvasHeight - padding * 2) / bounds.height : 1;
+        const scale = Math.min(scaleX, scaleY, 1);
+
+        group.set({
+          scaleX: scale,
+          scaleY: scale,
+          selectable: true,
+          evented: true,
+          originX: "center",
+          originY: "center",
+          subTargetCheck: true,
+          interactive: true,
+        });
+
+        // Reset zoom for a consistent baseline
+        fabricCanvas.setZoom(1);
+        setZoom(100);
+
+        // Add and center the group
+        fabricCanvas.add(group);
+        fabricCanvas.centerObject(group);
+        group.setCoords();
+
+        // Try to ungroup into selectable objects
+        if (typeof (group as any).toActiveSelection === "function") {
+          fabricCanvas.setActiveObject(group);
+          (group as any).toActiveSelection();
+          fabricCanvas.discardActiveObject();
+        }
+
+        // Ensure objects are selectable/evented and text is visible
+        fabricCanvas.getObjects().forEach((obj) => {
+          obj.set({ selectable: true, evented: true });
+          if ("text" in obj && typeof (obj as any).text === "string") {
+            obj.set({ fill: "#1f2937", fontFamily: "Inter, sans-serif" });
+          }
+        });
+
+        fabricCanvas.requestRenderAll();
+
+        // Hide Mermaid overlay and mark as loaded to canvas
+        setMermaidLoadedToCanvas(true);
+        setMermaidContent(null);
+      } catch (error) {
+        console.error("Failed to load Mermaid SVG into canvas:", error);
+        toast.error("Could not convert this template to editable objects.");
+        setMermaidContent(null);
+      }
+    };
+
+    loadMermaidSvg();
+
+    return () => {
+      cancelled = true;
+    };
+  }, [mermaidSvg, fabricCanvas, mermaidLoadedToCanvas]);
 
   // Find empty position for new shape
   const findEmptyPosition = useCallback(
@@ -685,8 +1023,14 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
   const createShape = useCallback(async (shapeType: ShapeType, color: string, left: number, top: number, label: string): Promise<FabricObject> => {
     const baseProps = {
       fill: color,
-      stroke: "#1E40AF",
-      strokeWidth: 2,
+      stroke: darkenHex(color, 24),
+      strokeWidth: 1.5,
+      shadow: new Shadow({
+        color: "rgba(15, 23, 42, 0.18)",
+        blur: 6,
+        offsetX: 0,
+        offsetY: 2,
+      }),
     };
 
     const shapeId = `shape_${Date.now()}_${Math.random().toString(36).substr(2, 9)}`;
@@ -712,6 +1056,16 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         const centerX = shapeWidth / 2;
         const iconY = 20;
         const labelY = 20 + scaledH + 6;
+        const boundsRect = new Rect({
+          left: 0,
+          top: 0,
+          width: shapeWidth,
+          height: shapeHeight,
+          fill: "rgba(0,0,0,0)",
+          stroke: "rgba(0,0,0,0)",
+          selectable: false,
+          evented: false,
+        });
         img.set({
           left: centerX - scaledW / 2,
           top: iconY,
@@ -726,7 +1080,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
         const labelText = new Textbox(label, {
           fontSize: 12,
-          fill: "#1a1a1a",
+          fill: "#0f172a",
           fontFamily: "Inter, sans-serif",
           fontWeight: "bold",
           originX: "center",
@@ -738,10 +1092,15 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           selectable: false,
           evented: false,
         });
+        const labelHeight = labelText.height ?? 0;
+        const maxTop = Math.max(0, shapeHeight - labelHeight - 6);
+        labelText.set({ top: Math.min(labelY, maxTop) });
 
-        const group = new FabricGroup([img, labelText], {
+        const group = new FabricGroup([boundsRect, img, labelText], {
           left,
           top,
+          originX: "left",
+          originY: "top",
           layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
         });
         // No padding so selection box tightly wraps the icon and label (like Creately)
@@ -771,27 +1130,18 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
             radius: circleRadius, 
             left: 0, 
             top: 0,
-            originX: 'center',
-            originY: 'center',
+            originX: "left",
+            originY: "top",
             ...baseProps 
           });
           
-          const labelText = new Textbox(label, {
-            fontSize: 12,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: circleRadius * 1.5,
-            left: 0,
-            top: 0,
-          });
+          const labelText = createCenteredLabel(label, circleRadius * 2, circleRadius * 2, 12, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -809,22 +1159,13 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           ];
           shapeObj = new Polygon(triPoints, { left: 0, top: 0, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 12,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 80,
-            left: 60,
-            top: 60,
-          });
+          const labelText = createCenteredLabel(label, 120, 100, 12, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -843,22 +1184,13 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           ];
           shapeObj = new Polygon(diamondPoints, { left: 0, top: 0, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 11,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 80,
-            left: 60,
-            top: 50,
-          });
+          const labelText = createCenteredLabel(label, 120, 100, 11, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -876,22 +1208,13 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           }
           shapeObj = new Polygon(hexPoints, { left: 0, top: 0, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 11,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 70,
-            left: 50,
-            top: 50,
-          });
+          const labelText = createCenteredLabel(label, 100, 100, 11, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -909,22 +1232,13 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           }
           shapeObj = new Polygon(pentPoints, { left: 0, top: 0, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 11,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 70,
-            left: 50,
-            top: 50,
-          });
+          const labelText = createCenteredLabel(label, 100, 100, 11, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -942,22 +1256,13 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           }
           shapeObj = new Polygon(octPoints, { left: 0, top: 0, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 11,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 70,
-            left: 50,
-            top: 50,
-          });
+          const labelText = createCenteredLabel(label, 100, 100, 11, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -976,22 +1281,13 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           }
           shapeObj = new Polygon(starPoints, { left: 0, top: 0, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 10,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 50,
-            left: 50,
-            top: 50,
-          });
+          const labelText = createCenteredLabel(label, 100, 100, 10, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -1010,22 +1306,13 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           ];
           shapeObj = new Polygon(paraPoints, { left: 0, top: 0, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 11,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 80,
-            left: 60,
-            top: 30,
-          });
+          const labelText = createCenteredLabel(label, 120, 60, 11, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -1038,22 +1325,13 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         case "roundedRect": {
           shapeObj = new Rect({ left: 0, top: 0, width: 120, height: 80, rx: 16, ry: 16, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 12,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 100,
-            left: 60,
-            top: 40,
-          });
+          const labelText = createCenteredLabel(label, 120, 80, 12, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
             top,
+            originX: "left",
+            originY: "top",
             layoutManager: new LayoutManager(new PreservePositionLayoutStrategy()),
           });
           (group as any).shapeId = shapeId;
@@ -1067,18 +1345,7 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           // Rectangle
           shapeObj = new Rect({ left: 0, top: 0, width: 120, height: 80, rx: 4, ry: 4, ...baseProps });
           
-          const labelText = new Textbox(label, {
-            fontSize: 12,
-            fill: '#ffffff',
-            fontFamily: 'Inter, sans-serif',
-            fontWeight: 'bold',
-            originX: 'center',
-            originY: 'center',
-            textAlign: 'center',
-            width: 100,
-            left: 60,
-            top: 40,
-          });
+          const labelText = createCenteredLabel(label, 120, 80, 12, color);
 
           const group = new FabricGroup([shapeObj, labelText], {
             left,
@@ -1637,8 +1904,15 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
 
     const newZoom = direction === "in" ? Math.min(zoom + 10, 200) : Math.max(zoom - 10, 50);
     setZoom(newZoom);
-    fabricCanvas.setZoom(newZoom / 100);
-    fabricCanvas.renderAll();
+    const center = fabricCanvas.getCenter();
+    const zoomPoint = new Point(center.left, center.top);
+    fabricCanvas.zoomToPoint(zoomPoint, newZoom / 100);
+    fabricCanvas.requestRenderAll();
+
+    const active = fabricCanvas.getActiveObject();
+    if (active) {
+      updateSelectionOverlays(active);
+    }
   };
 
   const handleSave = async () => {
@@ -2107,15 +2381,76 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
         </ScrollArea>
       </div>
 
-      {/* Toggle sidebar button (mobile) */}
-      <Button
-        variant="outline"
-        size="icon"
-        className="absolute left-2 top-2 z-30 h-8 w-8 lg:hidden bg-background"
-        onClick={() => setShowShapesPanel(!showShapesPanel)}
+      {/* Floating editor controls (Creately-style) */}
+      <div
+        className="absolute z-30 flex items-center gap-1.5 rounded-full border border-border/70 bg-background/80 px-2 py-1 shadow-lg backdrop-blur"
+        style={{ left: floatingToolbarPos.x, top: floatingToolbarPos.y }}
       >
-        <Menu className="h-4 w-4" />
-      </Button>
+        <button
+          type="button"
+          className="h-8 w-8 rounded-full hover:bg-muted flex items-center justify-center cursor-grab active:cursor-grabbing"
+          title="Drag toolbar"
+          onMouseDown={(event) => {
+            setIsDraggingToolbar(true);
+            dragOffsetRef.current = {
+              x: event.clientX - floatingToolbarPos.x,
+              y: event.clientY - floatingToolbarPos.y,
+            };
+          }}
+        >
+          <GripVertical className="h-4 w-4 text-muted-foreground" />
+        </button>
+        <div className="h-5 w-px bg-border/70" />
+        <Button
+          variant={showShapesPanel ? "secondary" : "ghost"}
+          size="icon"
+          className="h-8 w-8 rounded-full hover:bg-muted"
+          onClick={() => setShowShapesPanel(!showShapesPanel)}
+          title={showShapesPanel ? "Hide tools" : "Show tools"}
+        >
+          <Menu className="h-4 w-4" />
+        </Button>
+        <Button
+          variant={showLayers ? "secondary" : "ghost"}
+          size="icon"
+          className="h-8 w-8 rounded-full hover:bg-muted"
+          onClick={() => setShowLayers(!showLayers)}
+          title={showLayers ? "Hide layers" : "Show layers"}
+        >
+          <Layers className="h-4 w-4" />
+        </Button>
+        <Button
+          variant={showHistory ? "secondary" : "ghost"}
+          size="icon"
+          className="h-8 w-8 rounded-full hover:bg-muted"
+          onClick={() => setShowHistory(!showHistory)}
+          title={showHistory ? "Hide history" : "Show history"}
+        >
+          <History className="h-4 w-4" />
+        </Button>
+        <div className="h-5 w-px bg-border/70" />
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-full hover:bg-muted"
+          onClick={() => handleZoom("out")}
+          title="Zoom out"
+        >
+          <ZoomOut className="h-4 w-4" />
+        </Button>
+        <div className="min-w-[42px] text-xs font-medium text-muted-foreground text-center">
+          {zoom}%
+        </div>
+        <Button
+          variant="ghost"
+          size="icon"
+          className="h-8 w-8 rounded-full hover:bg-muted"
+          onClick={() => handleZoom("in")}
+          title="Zoom in"
+        >
+          <ZoomIn className="h-4 w-4" />
+        </Button>
+      </div>
 
       {/* Layers Panel */}
       <LayersPanel
@@ -2176,28 +2511,37 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
           ref={containerRef}
           className="flex-1 relative min-h-0"
           style={{
-            backgroundColor: "#ebe8e4",
+            backgroundColor: "#f8f9fb",
             backgroundImage: `
-              linear-gradient(to right, #d4cfc9 0.5px, transparent 0.5px),
-              linear-gradient(to bottom, #d4cfc9 0.5px, transparent 0.5px)
+              linear-gradient(0deg, rgba(148, 163, 184, 0.15) 1px, transparent 1px),
+              linear-gradient(90deg, rgba(148, 163, 184, 0.15) 1px, transparent 1px)
             `,
-            backgroundSize: "20px 20px",
+            backgroundSize: "24px 24px",
           }}
           onDragOver={handleDragOver}
           onDrop={handleDrop}
           tabIndex={0}
         >
-          {mermaidContent ? (
+          {mermaidContent && (
             <div
               ref={mermaidContainerRef}
               className="absolute inset-0 overflow-auto flex items-center justify-center p-8 bg-background/95"
-            />
-          ) : (
-            <>
-              <canvas ref={canvasRef} className="absolute inset-0" tabIndex={0} />
+            >
+              {mermaidError ? (
+                <div className="p-4 text-sm text-muted-foreground">{mermaidError}</div>
+              ) : mermaidSvg ? (
+                <div
+                  className="bg-card rounded-xl border shadow-sm p-6 max-w-4xl mx-auto [&_svg]:max-w-full [&_svg]:h-auto"
+                  dangerouslySetInnerHTML={{ __html: mermaidSvg }}
+                />
+              ) : (
+                <div className="p-4 text-sm text-muted-foreground animate-pulse">Rendering diagram...</div>
+              )}
+            </div>
+          )}
 
-              {/* Creately-style selection overlay (dashed border + handles matching Creately exactly) */}
-              {selectionOverlay && selectedObject && !(selectedObject as any).isConnector && (
+          {/* Creately-style selection overlay (dashed border + handles matching Creately exactly) */}
+          {!mermaidContent && selectionOverlay && selectedObject && !(selectedObject as any).isConnector && (
                 <div
                   className="absolute z-40 pointer-events-none"
                   style={{
@@ -2240,10 +2584,10 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
                     />
                   ))}
                 </div>
-              )}
+          )}
 
-              {/* Floating toolbar anchored to selection (Creately-style - exact match) */}
-              {toolbarPosition && selectedObject && !(selectedObject as any).isConnector && (
+          {/* Floating toolbar anchored to selection (Creately-style - exact match) */}
+          {!mermaidContent && toolbarPosition && selectedObject && !(selectedObject as any).isConnector && (
                 <div
                   className="absolute z-50 flex items-center gap-0.5 px-1.5 py-1 bg-gray-100 border border-gray-300 rounded-md shadow-md"
                   style={{
@@ -2381,8 +2725,6 @@ export function EmbeddedEditor({ diagramId, user, onClose: _onClose, onSave, wor
                     </DropdownMenuContent>
                   </DropdownMenu>
                 </div>
-              )}
-            </>
           )}
         </div>
       </div>
